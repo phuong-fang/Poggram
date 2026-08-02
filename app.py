@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import socket
+import sys
 import threading
 import time
 import uuid
@@ -61,7 +62,12 @@ class VaultRequest(FlaskRequest):
         paths.append((path, handle))
         return handle
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
+_BUNDLE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+app = Flask(
+    __name__,
+    static_folder=os.path.join(_BUNDLE_DIR, "static"),
+    template_folder=os.path.join(_BUNDLE_DIR, "templates"),
+)
 app.request_class = VaultRequest
 
 @app.teardown_request

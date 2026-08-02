@@ -4,6 +4,7 @@ import json
 import lzma
 import os
 import sqlite3
+import sys
 import tarfile
 import tempfile
 import threading
@@ -16,7 +17,13 @@ from typing import Optional, List, Dict, Any
 
 import sync_engine
 
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+def _app_dir():
+
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+APP_DIR = _app_dir()
 DATA_DIR = os.path.join(APP_DIR, "data")
 CACHE_DIR = os.path.join(DATA_DIR, "cache")
 DB_FILE = os.path.join(DATA_DIR, "vault.db")
