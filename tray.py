@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import threading
 
 import store
@@ -11,8 +12,9 @@ _icon_lock = threading.Lock()
 _on_quit = None
 _window = None
 
-ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "poggram.ico")
-_ICON_PNG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "poggram.png")
+_ASSET_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+ICON_PATH = os.path.join(_ASSET_DIR, "static", "poggram.ico")
+_ICON_PNG_PATH = os.path.join(_ASSET_DIR, "static", "poggram.png")
 
 def _build_image():
 

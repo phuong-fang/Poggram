@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 data/
 App ID.txt
+
+# PyInstaller build output and the stamp it generates
+build/
+dist/
+build_stamp.json
