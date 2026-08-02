@@ -105,18 +105,7 @@ double-click to open, stream or download them.
 
 ## Telegram's terms apply
 
-Poggram is a client for your own Telegram account, not a service of its own.
-Everything it does — creating the archive group, uploading, downloading — is
-an ordinary Telegram API call made as you, so
-[Telegram's Terms of Service](https://telegram.org/tos) and
-[API Terms](https://core.telegram.org/api/terms) apply exactly as they would in
-any other client, including whatever storage and rate limits Telegram enforces
-at the time.
-
-Using Poggram does not exempt you from them, and it can't shield an account
-from the consequences of breaking them. Bulk automated transfers in particular
-are the kind of traffic Telegram rate-limits; the app rides out those limits
-rather than working around them.
+Poggram is a client for your own account, so [Telegram's ToS](https://telegram.org/tos) apply.
 
 ## Where things are kept
 
