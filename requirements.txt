@@ -1,0 +1,11 @@
+Flask>=3.0
+pywebview>=6.2.1
+telethon>=1.36
+cryptg>=0.5
+watchdog>=6.0
+Pillow>=11.0
+pillow-avif-plugin>=1.4
+keyring>=25.0
+cryptography>=42.0
+pytest>=8.0
+pystray>=0.19

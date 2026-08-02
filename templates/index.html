@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poggram</title>
+<link rel="icon" href="{{ url_for('static', filename='poggram.ico') }}?v={{ asset_version }}" sizes="any">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_version }}">
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.383.0/dist/umd/lucide.min.js" integrity="sha384-wHFvAtjmgnkA2PJcMsDaCgdipf7X7YV44X/igbLHpvGiq6T5/PvFKl93grpvtbQT" crossorigin="anonymous"></script>
+</head>
+<body>
+<div class="app-shell">
+  <nav class="rail">
+    <div class="rail-brand">
+      <div class="eyebrow">Telegram &middot; Storage</div>
+      <div class="mark">Poggram</div>
+    </div>
+    <div class="rail-nav">
+      <button type="button" class="rail-item active" data-view="explorer"><i data-lucide="folder-tree"></i><span class="rail-item-label">Explorer</span></button>
+      <button type="button" class="rail-item" data-view="recent"><i data-lucide="clock"></i><span class="rail-item-label">Recently added</span></button>
+      <button type="button" class="rail-item" data-view="history"><i data-lucide="history"></i><span class="rail-item-label">Watch history</span></button>
+      <button type="button" class="rail-item" data-view="starred"><i data-lucide="star"></i><span class="rail-item-label">Starred</span></button>
+      <button type="button" class="rail-item" data-view="trash"><i data-lucide="trash-2"></i><span class="rail-item-label">Trash</span></button>
+    </div>
+    <div class="rail-divider"></div>
+    <div class="rail-nav rail-transfers-group" id="rail-transfers-group">
+      <button type="button" class="rail-item" data-view="transfers"><i data-lucide="arrow-down-up"></i><span class="rail-item-label">Transfers</span><span class="rail-badge hide" id="transfers-badge"></span></button>
+      <button type="button" class="rail-item" data-view="sync"><i data-lucide="refresh-cw"></i><span class="rail-item-label">Sync</span><span class="rail-badge hide" id="sync-badge"></span></button>
+      <button type="button" class="rail-item" data-view="sync-transfers"><i data-lucide="upload"></i><span class="rail-item-label">Sync Transfers</span><span class="rail-badge hide" id="sync-transfers-badge"></span></button>
+      <button type="button" class="rail-item" data-view="settings"><i data-lucide="sliders-horizontal"></i><span class="rail-item-label">Settings</span></button>
+    </div>
+    <div class="rail-nav-divider"></div>
+    <div class="rail-item-count hide" id="rail-item-count"></div>
+    <div class="rail-foot-group">
+      <div class="rail-foot">Not connected to Telegram yet</div>
+      <div class="rail-storage" id="rail-storage"></div>
+    </div>
+  </nav>
+  <div class="rail-resize-handle" id="rail-resize-handle"></div>
+
+  <main class="stage">
+    <div class="empty-hint" id="initial-load-status">Loading...</div>
+    <section class="view hide" id="view-explorer">
+      <div class="explorer">
+        <div class="sidebar">
+          <div class="sidebar-label">Folders</div>
+          <nav class="tree" id="tree"></nav>
+          <input type="file" id="file-input" multiple hidden>
+          <input type="file" id="version-file-input" hidden>
+        </div>
+        <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
+        <div class="main-pane">
+          <div class="pane-header">
+            <div class="breadcrumb" id="breadcrumb"></div>
+            <div class="pane-header-actions">
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input type="search" id="search-input" placeholder="Search files" autocomplete="off">
+              </div>
+              <button type="button" class="new-btn" id="new-btn"><i data-lucide="plus"></i>New</button>
+              <div class="sort-control" id="grid-sort-control">
+                <select class="sort-select" id="grid-sort-select" aria-label="Sort by">
+                  <option value="name">Name</option>
+                  <option value="size">Size</option>
+                  <option value="modified">Modified</option>
+                </select>
+                <button type="button" class="sort-dir-btn" id="grid-sort-dir-btn" title="Toggle sort direction" disabled><i data-lucide="arrow-up"></i></button>
+              </div>
+              <div class="grid-size-toggle" id="grid-size-toggle" role="group" aria-label="Grid card size">
+                <button type="button" class="grid-size-btn" data-size="small" title="Small cards">S</button>
+                <button type="button" class="grid-size-btn" data-size="medium" title="Medium cards">M</button>
+                <button type="button" class="grid-size-btn" data-size="large" title="Large cards">L</button>
+              </div>
+              <button type="button" class="view-toggle-btn" id="view-toggle-btn"><i data-lucide="list"></i></button>
+            </div>
+          </div>
+          <div class="pane-count" id="item-count"></div>
+          <div class="list-header" id="grid-list-header"><span></span><span></span><span>Name</span><span>Size</span><span>Modified</span></div>
+          <div class="grid" id="grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view hide" id="view-smart">
+      <header class="view-header">
+        <div class="eyebrow">Library</div>
+        <h1 id="smart-title"></h1>
+        <p class="lede" id="smart-lede"></p>
+      </header>
+      <div class="pane-count-row">
+        <div class="pane-count" id="smart-count"></div>
+        <div class="pane-header-actions">
+          <div class="search-box">
+            <i data-lucide="search"></i>
+            <input type="search" id="smart-search-input" placeholder="Search files" autocomplete="off">
+          </div>
+          <div class="sort-control" id="smart-sort-control">
+            <select class="sort-select" id="smart-sort-select" aria-label="Sort by">
+              <option value="name">Name</option>
+              <option value="size">Size</option>
+              <option value="modified">Modified</option>
+            </select>
+            <button type="button" class="sort-dir-btn" id="smart-sort-dir-btn" title="Toggle sort direction" disabled><i data-lucide="arrow-up"></i></button>
+          </div>
+          <div class="grid-size-toggle" id="smart-grid-size-toggle" role="group" aria-label="Grid card size">
+            <button type="button" class="grid-size-btn" data-size="small" title="Small cards">S</button>
+            <button type="button" class="grid-size-btn" data-size="medium" title="Medium cards">M</button>
+            <button type="button" class="grid-size-btn" data-size="large" title="Large cards">L</button>
+          </div>
+          <button type="button" class="view-toggle-btn" id="smart-view-toggle-btn"><i data-lucide="list"></i></button>
+        </div>
+      </div>
+      <div class="list-header" id="smart-list-header"><span></span><span></span><span>Name</span><span>Size</span><span>Modified</span></div>
+      <div class="grid" id="smart-grid"></div>
+    </section>
+
+    <section class="view hide" id="view-transfers">
+      <header class="view-header">
+        <div class="eyebrow">Activity</div>
+        <h1>Transfers</h1>
+        <p class="lede">Uploads and downloads started this session. Finished transfers stay visible until you dismiss them or use "Clear finished"; failed ones stay until you check them.</p>
+      </header>
+      <div class="transfers-subtabs" role="tablist" aria-label="Transfers filter">
+        <button type="button" class="transfers-subtab-btn active" data-subtab="uploading" role="tab" aria-selected="true">Uploading<span class="transfers-subtab-count hide" id="transfers-subtab-count-uploading"></span></button>
+        <button type="button" class="transfers-subtab-btn" data-subtab="downloading" role="tab" aria-selected="false">Downloading<span class="transfers-subtab-count hide" id="transfers-subtab-count-downloading"></span></button>
+        <button type="button" class="transfers-subtab-btn" data-subtab="completed" role="tab" aria-selected="false">Completed<span class="transfers-subtab-count hide" id="transfers-subtab-count-completed"></span></button>
+      </div>
+      <div class="transfers-overall-progress hide" id="transfers-overall-progress">
+        <span class="transfers-overall-text" id="transfers-overall-text"></span>
+      </div>
+      <div class="pane-header-actions">
+        <div class="search-box">
+          <i data-lucide="search"></i>
+          <input type="search" id="transfers-search-input" placeholder="Search transfers" autocomplete="off">
+        </div>
+        <label class="toggle-switch transfers-search-all-toggle"><input type="checkbox" id="transfers-search-all-toggle"> <span class="toggle-label">Search all tabs</span><span class="toggle-track"></span></label>
+      </div>
+      <div class="transfers-bulk-actions">
+        <button type="button" class="bulk-action-btn hide" id="pause-all-btn">Pause all</button>
+        <button type="button" class="bulk-action-btn hide" id="continue-all-btn">Continue all</button>
+        <button type="button" class="bulk-action-btn hide" id="clear-finished-btn">Clear finished</button>
+        <button type="button" class="bulk-action-btn hide" id="clear-duplicates-btn">Clear duplicates</button>
+        <button type="button" class="bulk-action-btn hide" id="dismiss-all-btn">Dismiss all</button>
+      </div>
+      <div class="upload-list" id="upload-list"></div>
+      <div class="empty-hint" id="transfers-empty-hint">No transfers yet this session.</div>
+    </section>
+
+    <section class="view hide" id="view-trash">
+      <header class="view-header">
+        <div class="eyebrow">Recently deleted</div>
+        <h1>Trash</h1>
+        <p class="lede">Soft-deleted folders and files. Restore them, or delete permanently to remove them for good.</p>
+      </header>
+      <div class="breadcrumb" id="trash-breadcrumb"></div>
+      <div class="pane-count-row">
+        <div class="pane-count" id="trash-count"></div>
+        <div class="pane-header-actions">
+          <div class="search-box">
+            <i data-lucide="search"></i>
+            <input type="search" id="trash-search-input" placeholder="Search files" autocomplete="off">
+          </div>
+          <div class="grid-size-toggle" id="trash-grid-size-toggle" role="group" aria-label="Grid card size">
+            <button type="button" class="grid-size-btn" data-size="small" title="Small cards">S</button>
+            <button type="button" class="grid-size-btn" data-size="medium" title="Medium cards">M</button>
+            <button type="button" class="grid-size-btn" data-size="large" title="Large cards">L</button>
+          </div>
+          <button type="button" class="view-toggle-btn" id="trash-view-toggle-btn"><i data-lucide="list"></i></button>
+          <button type="button" class="header-action-btn danger" id="trash-delete-all-btn" title="Delete all items permanently"><i data-lucide="trash-2"></i> Delete all</button>
+        </div>
+      </div>
+      <div class="trash-list" id="trash-list"></div>
+    </section>
+
+    <section class="view hide" id="view-sync">
+      <header class="view-header">
+        <div class="eyebrow">Automation</div>
+        <h1>Sync</h1>
+        <p class="lede">Local folders that automatically upload new files into a Vault folder. Off by default, per folder. Nothing is ever downloaded or deleted based on local changes - a file that changes after its first sync is flagged, not automatically re-uploaded.</p>
+      </header>
+      <button type="button" class="new-btn" id="open-sync-create-btn"><i data-lucide="plus"></i>Add sync folder</button>
+      <div class="sync-pairs" id="sync-pairs-list"></div>
+    </section>
+
+    <section class="view hide" id="view-sync-transfers">
+      <header class="view-header">
+        <div class="eyebrow">Activity</div>
+        <h1>Sync Transfers</h1>
+        <p class="lede">Active and recent uploads from your sync folders. Files are uploaded sequentially per folder - one finishes before the next starts.</p>
+      </header>
+      <div class="transfers-bulk-actions">
+        <button type="button" class="bulk-action-btn hide" id="sync-clear-finished-btn">Clear finished</button>
+      </div>
+      <div class="pane-header-actions">
+        <div class="search-box">
+          <i data-lucide="search"></i>
+          <input type="search" id="sync-transfers-search-input" placeholder="Search sync transfers" autocomplete="off">
+        </div>
+      </div>
+      <div class="sync-transfers-list" id="sync-transfers-list"></div>
+    </section>
+
+    <section class="view hide" id="view-settings">
+      <header class="view-header">
+        <div class="eyebrow">Configuration</div>
+        <h1>Settings</h1>
+        <p class="lede">Connect your Telegram account and create a dedicated archive supergroup. This app only ever creates and uses that one group - it never reads or touches any of your existing chats.</p>
+      </header>
+
+      <div class="settings-panel hide" id="settings-connected">
+        <div class="settings-tabs" id="settings-tabs" role="tablist" aria-label="Settings sections">
+          <button type="button" class="settings-tab-btn active" data-tab="account" role="tab" aria-selected="true">Account</button>
+          <button type="button" class="settings-tab-btn" data-tab="backup" role="tab" aria-selected="false">Backup</button>
+          <button type="button" class="settings-tab-btn" data-tab="storage" role="tab" aria-selected="false">Storage</button>
+          <button type="button" class="settings-tab-btn" data-tab="preferences" role="tab" aria-selected="false">Preferences</button>
+          <button type="button" class="settings-tab-btn" data-tab="shortcuts" role="tab" aria-selected="false">Shortcuts</button>
+        </div>
+
+        <div class="settings-tab-panel" id="settings-tab-account" role="tabpanel">
+          <div class="status-row"><span class="status-label">Phone</span><span id="status-phone">-</span></div>
+          <div class="status-row"><span class="status-label">Account</span><span class="cache-row-value"><span id="status-premium">-</span><button type="button" class="icon-btn-sm" id="refresh-premium-status-btn" title="Re-check Premium status with Telegram"><i data-lucide="refresh-cw"></i></button></span></div>
+          <div class="status-row"><span class="status-label">Archive group</span><span id="status-archive">-</span></div>
+          <div class="status-row hide" id="archive-check-row"><span class="status-label">Archive check</span><span id="status-archive-check">-</span></div>
+          <p class="step-hint hide" id="archive-check-hint"></p>
+          <div class="hide" id="recovery-section" style="margin:var(--space-3) 0;padding:var(--space-3);border:1px solid color-mix(in oklch, var(--accent) 30%, var(--line));border-radius:10px;background:color-mix(in oklch, var(--accent) 8%, var(--surface))">
+            <p style="font-weight:600;font-size:0.84rem;margin-bottom:var(--space-2)">Recovery — find your archive</p>
+            <p class="step-hint" style="margin-bottom:var(--space-2)">Your current archive group doesn't match your local file index. Scan for your real archive group below, select it, then run a backfill to rediscover your files.</p>
+            <button type="button" id="settings-scan-archives-btn" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-family:var(--sys);font-size:0.82rem;cursor:pointer;color:var(--ink)">Scan for existing archive groups</button>
+            <div id="settings-scan-results" class="hide" style="display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:200px;overflow-y:auto"></div>
+          </div>
+          <div style="display:flex;gap:var(--space-3);margin:var(--space-3) 0">
+            <button type="button" id="export-settings-btn" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-family:var(--sys);font-size:0.82rem;cursor:pointer;color:var(--ink)">Export settings</button>
+            <button type="button" id="import-settings-btn" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-family:var(--sys);font-size:0.82rem;cursor:pointer;color:var(--ink)">Import settings</button>
+          </div>
+          <div class="backfill-row">
+            <div>
+              <p class="step-hint">Import any files already sitting in your archive group that predate this app (e.g. sent manually via Telegram). They land at the root, unfiled - safe to run more than once. Only messages newer than the last completed scan are checked, so repeat runs stay fast.</p>
+            </div>
+            <button type="button" id="backfill-btn">Run backfill scan</button>
+          </div>
+          <div class="backfill-row">
+            <div>
+              <p class="step-hint">Re-walk the whole archive group from the beginning, ignoring the last-scanned marker. Only needed to re-import something you deleted from this index but kept in Telegram - a normal scan skips it as already accounted for.</p>
+            </div>
+            <button type="button" id="backfill-full-btn">Full rescan</button>
+          </div>
+          <p class="step-hint" id="backfill-result"></p>
+          <div class="backfill-row">
+            <div>
+              <p class="step-hint">Forward any image/video files that predate the Media topic into it. Safe to run more than once - already-migrated files are skipped. The old copy of each forwarded file is left in place for you to remove yourself.</p>
+            </div>
+            <button type="button" id="media-topic-migrate-btn">Migrate existing media</button>
+          </div>
+          <p class="step-hint" id="media-topic-migrate-result"></p>
+          <div class="backfill-row">
+            <div>
+              <p class="step-hint">Signs out of this Telegram account on this device. Your local file index, thumbnails, and settings are kept - only the account session is cleared. You'll need to reconnect (phone number + code) to use the app again.</p>
+            </div>
+            <button type="button" id="logout-btn">Log out</button>
+          </div>
+        </div>
+
+        <div class="settings-tab-panel hide" id="settings-tab-backup" role="tabpanel">
+          <div class="status-row">
+            <span class="status-label">Topics / Forum mode</span>
+            <span class="danger-row-value"><span id="status-forum-mode">-</span><button type="button" class="cache-clear-btn" id="forum-mode-btn"></button></span>
+          </div>
+          <p class="step-hint">Required before app-data backup can store anything - this is a real, visible change to your archive group in any Telegram client, not just an internal app setting. Poggram keeps it on once enabled, because backups currently have nowhere else to live; that restriction lifts if backups can be exported elsewhere.</p>
+
+          <div class="status-row">
+            <span class="status-label">Back up app data</span>
+            <label class="toggle-switch"><input type="checkbox" id="backup-enabled-toggle"> <span class="toggle-label">Enabled</span><span class="toggle-track"></span></label>
+          </div>
+          <p class="step-hint">Keeps your folder structure and file index backed up in a dedicated "App Data" topic in your archive group, so switching machines or losing your local index isn't a disaster. Backs up once when you close the app, and only if something actually changed since the last backup. Use "Back up now" below any time you want one immediately. Never includes your Telegram session, API credentials, or phone number, under any circumstances.</p>
+
+          <div class="status-row">
+            <span class="status-label">Include thumbnails</span>
+            <label class="toggle-switch"><input type="checkbox" id="backup-include-thumbnails-toggle"> <span class="toggle-label">Include</span><span class="toggle-track"></span></label>
+          </div>
+          <p class="step-hint">Off by default, and usually best left off - thumbnails are nearly the entire size and time cost of a backup, and they're the one part that doesn't need backing up: any missing thumbnail is rebuilt on demand from Telegram's own copy, or regenerated from the video itself, and cached again as you browse. Turn this on only if you want a restored machine to look complete instantly, including offline.</p>
+
+          <div class="status-row">
+            <span class="status-label">Check for newer backup on startup</span>
+            <label class="toggle-switch"><input type="checkbox" id="backup-check-on-boot-toggle"> <span class="toggle-label">Check on boot</span><span class="toggle-track"></span></label>
+          </div>
+          <p class="step-hint">Useful if you switch between machines - only ever notifies and asks before restoring anything, never restores automatically.</p>
+
+          <div class="backfill-row">
+            <div>
+              <p class="step-hint" id="backup-now-result">Back up your current folder structure, file index, and thumbnails right now, instead of waiting for the next automatic trigger.</p>
+            </div>
+            <button type="button" id="backup-now-btn">Back up now</button>
+          </div>
+          <div class="backfill-row">
+            <div>
+              <p class="step-hint">See previous backups, or restore an earlier one over your local index.</p>
+            </div>
+            <button type="button" id="open-backup-history-btn">View backup history</button>
+          </div>
+        </div>
+
+        <div class="settings-tab-panel hide" id="settings-tab-storage" role="tabpanel">
+          <div class="status-row"><span class="status-label">Versioned files</span><span class="danger-row-value"><span id="status-versioned-size">-</span><button type="button" class="danger-link" id="wipe-versioned-btn">Delete</button></span></div>
+          <p class="step-hint" id="versioned-size-hint"></p>
+          <div class="status-row"><span class="status-label">All files and directories</span><span class="danger-row-value"><span id="status-total-size">-</span><button type="button" class="danger-link" id="wipe-all-btn">Delete</button></span></div>
+          <p class="step-hint">Permanently deletes every file and folder in this vault, including every version of every file. This cannot be undone.</p>
+          <div class="status-row"><span class="status-label">Local cache</span><span class="cache-row-value"><span id="status-cache-size">-</span><button type="button" class="cache-clear-btn" id="clear-cache-btn">Clear cache</button></span></div>
+          <p class="step-hint">Cached file chunks are just a local speed optimization for repeat streaming/downloads. Clearing it frees disk space immediately, and your files stay safely in Telegram - they're simply re-fetched next time they're opened.</p>
+        </div>
+
+        <div class="settings-tab-panel hide" id="settings-tab-preferences" role="tabpanel">
+
+          <details class="settings-group" id="settings-group-transfers" open>
+            <summary class="settings-group-summary">Upload &amp; download</summary>
+            <p class="step-hint settings-group-note">Two different things, easy to mix up: <strong>Files at once</strong> = how many separate files move together. <strong>Streams</strong> = how many pieces of one file move together. They multiply, so 3 files x 8 streams = 24 requests at once.</p>
+            <div class="status-row">
+              <span class="status-label">Max file chunk size</span>
+              <span class="chunk-size-control">
+                <input type="number" id="f-chunk-size-mb" min="1" step="1">
+                <span class="unit-label">MB</span>
+                <button type="button" id="save-chunk-size-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="chunk-size-hint">Files larger than this get split across multiple Telegram messages automatically - lower this to test the splitting logic without a genuinely huge file.</p>
+            <div class="status-row">
+              <span class="status-label">Files at once</span>
+              <span class="chunk-size-control">
+                <input type="number" id="f-parallel-transfers" min="1" max="10" step="1" value="3">
+                <span class="unit-label">files (1-10)</span>
+                <button type="button" id="save-parallel-transfers-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="parallel-transfers-hint">How many whole files transfer at the same time, for both manual transfers and background sync. Higher speeds up bulk operations but raises flood-wait risk. Default 3.</p>
+            <div class="status-row">
+              <span class="status-label">Download streams</span>
+              <span class="chunk-size-control">
+                <input type="number" id="f-download-workers" min="1" max="16" step="1" value="8">
+                <span class="unit-label">streams (1-16)</span>
+                <button type="button" id="save-download-workers-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="download-workers-hint">How many pieces of a single file download in parallel. Higher is faster, but raises the chance one stalled piece holds up the rest. Default 8.</p>
+            <div class="status-row">
+              <span class="status-label">Upload streams</span>
+              <span class="chunk-size-control">
+                <input type="number" id="f-upload-workers" min="1" max="16" step="1" value="8">
+                <span class="unit-label">streams (1-16)</span>
+                <button type="button" id="save-upload-workers-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="upload-workers-hint">How many pieces of a single file upload in parallel. 1 = fully sequential. Default 8.</p>
+            <div class="status-row">
+              <span class="status-label">Completed uploads</span>
+              <span class="chunk-size-control">
+                <select id="f-completed-uploads-persistence">
+                  <option value="clear">Clear on restart</option>
+                  <option value="keep">Keep until dismissed</option>
+                </select>
+                <button type="button" id="save-completed-uploads-persistence-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="completed-uploads-persistence-hint">Whether completed uploads stay visible in the Transfers tab after a restart. "Clear on restart" matches the historical behavior; "Keep until dismissed" persists them until you manually clear or dismiss them.</p>
+            <div class="status-row">
+              <span class="status-label">Upload part size</span>
+              <span class="chunk-size-control">
+                <input type="number" id="f-upload-part-size" min="0" max="512" step="32" value="0">
+                <span class="unit-label">KB (0 = auto)</span>
+                <button type="button" id="save-upload-part-size-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="upload-part-size-hint">How big each upload piece is. 0 (default) picks automatically by file size, which is almost always what you want.</p>
+            <div class="status-row">
+              <span class="status-label">Max upload request size</span>
+              <span class="chunk-size-control">
+                <input type="number" id="f-max-upload-request-gb" min="1" step="1">
+                <span class="unit-label">GB (0 = no limit)</span>
+                <button type="button" id="save-max-upload-request-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="max-upload-request-hint">Safety ceiling on a single upload request. Only applies when the browser sends the file itself - the file picker, "upload new version", and drag-and-drop. Dragging from Explorer or using the folder picker passes a path instead and is never limited. 64 GB default; raise it only if you hit it.</p>
+            <div class="status-row">
+              <span class="status-label">Sync backoff during activity</span>
+              <span class="chunk-size-control">
+                <input type="number" id="f-sync-backoff-workers" min="1" max="10" step="1" value="1">
+                <span class="unit-label">streams</span>
+                <button type="button" id="save-sync-backoff-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="sync-backoff-hint">Upload streams a background sync keeps while you're actively using the app. 1 (default) yields hardest, so your own transfers stay responsive. Raise it toward "Upload streams" above for more sync throughput instead.</p>
+          </details>
+
+          <details class="settings-group" id="settings-group-thumbnails">
+            <summary class="settings-group-summary">Thumbnails</summary>
+            <p class="step-hint settings-group-note">All three apply only to thumbnails generated <em>after</em> you save - never to anything already cached, and never to the small thumb stored alongside the file in Telegram.</p>
+            <div class="status-row">
+              <span class="status-label">Thumbnail format</span>
+              <span class="chunk-size-control">
+                <select id="f-thumbnail-format">
+                  <option value="jpeg">JPEG</option>
+                  <option value="avif">AVIF</option>
+                </select>
+                <button type="button" id="save-thumbnail-format-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="thumbnail-format-hint">Format for newly-generated local thumbnails (new uploads, "use this frame as thumbnail", cache regeneration). JPEG (default) is the safe, well-tested choice. AVIF cuts thumbnail cache/backup size roughly in half at the same quality setting, but can look softer at small thumbnail sizes - only changes thumbnails generated after saving this, not anything already cached.</p>
+            <div class="status-row">
+              <span class="status-label">Thumbnail quality</span>
+              <span class="chunk-size-control">
+                <input type="range" id="f-thumbnail-quality-slider" min="1" max="100" step="1" value="75">
+                <input type="number" id="f-thumbnail-quality" min="1" max="100" step="1" value="75">
+                <button type="button" id="save-thumbnail-quality-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="thumbnail-quality-hint">Encoder quality (1-100) for newly-generated local thumbnails only - never the Telegram-stored document thumb, which always uses a fixed safe quality regardless of this. Higher = larger files, less compression artifacting.</p>
+            <div class="status-row">
+              <span class="status-label">Chroma subsampling</span>
+              <span class="chunk-size-control">
+                <select id="f-thumbnail-chroma-subsampling">
+                  <option value="default">Default</option>
+                  <option value="4:4:4">4:4:4</option>
+                  <option value="4:2:2">4:2:2</option>
+                  <option value="4:2:0">4:2:0</option>
+                </select>
+                <button type="button" id="save-thumbnail-chroma-subsampling-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint" id="thumbnail-chroma-subsampling-hint">Controls color compression for newly-generated local thumbnails. Lower = less color information, smaller file size. Default matches the encoder's own choice. 4:4:4 = full color, highest quality/size. 4:2:2 = less color (small visual difference), significant space-saving. 4:2:0 = colors may appear washed out.</p>
+          </details>
+
+          <details class="settings-group" id="settings-group-video">
+            <summary class="settings-group-summary">Video player</summary>
+            <div class="status-row">
+              <span class="status-label">External video player</span>
+              <label class="toggle-switch"><input type="checkbox" id="external-video-player-toggle"> <span class="toggle-label">Enabled</span><span class="toggle-track"></span></label>
+            </div>
+            <p class="step-hint">Adds a "Play in video player" option, in the video viewer and the right-click menu, that launches an external program instead. "Open" always uses the in-app player either way - this is only for when you want a dedicated program's own codec/subtitle support instead. Off by default.</p>
+            <div class="status-row">
+              <span class="status-label">Video player path</span>
+              <span class="chunk-size-control">
+                <input type="text" id="f-video-player-path" placeholder="C:\Program Files\MPC-HC\mpc-hc64.exe">
+                <button type="button" id="save-video-player-btn">Save</button>
+              </span>
+            </div>
+            <p class="step-hint">Only used when "External video player" above is enabled. Auto-detected if MPC-HC is installed in a common location; override here if not, or to use a different player.</p>
+          </details>
+
+          <details class="settings-group" id="settings-group-interface">
+            <summary class="settings-group-summary">Interface</summary>
+            <div class="status-row">
+              <span class="status-label">Transfers tab position</span>
+              <div class="pos-toggle" id="transfers-position-toggle" role="group" aria-label="Transfers tab position">
+                <button type="button" class="pos-toggle-btn" data-pos="nav">In main nav</button>
+                <button type="button" class="pos-toggle-btn" data-pos="footer">Above Connected</button>
+              </div>
+            </div>
+            <p class="step-hint">Choose where the Transfers/Sync/Settings group sits in the sidebar.</p>
+            <div class="status-row">
+              <span class="status-label">Item size</span>
+              <span class="ui-size-control">
+                <input type="range" id="ui-size-slider" min="0" max="10" step="1" value="6" aria-label="Item size">
+                <span class="ui-size-value" id="ui-size-value">160px</span>
+              </span>
+            </div>
+            <p class="step-hint">How large files and folders are in Explorer, in both grid and list view. The S/M/L buttons above each view are shortcuts to three of these steps - drag for the sizes in between. Below 100px only grid cards keep shrinking; list rows stay at their 100px density.</p>
+            <div class="status-row">
+              <span class="status-label">Close to tray</span>
+              <label class="toggle-switch"><input type="checkbox" id="close-to-tray-toggle"> <span class="toggle-label">Enabled</span><span class="toggle-track"></span></label>
+            </div>
+            <p class="step-hint">Closing the window parks Poggram in the system tray instead of quitting, so transfers and folder sync keep running. Use the tray icon's Quit to exit properly. Turn this off to make the window's X quit as usual.</p>
+            <div class="status-row">
+              <span class="status-label">Log</span>
+              <button type="button" class="bulk-action-btn" id="open-log-btn">Open log file</button>
+            </div>
+            <p class="step-hint">Everything the app logs is written to <span id="log-path-hint">data/poggram.log</span>, so you don't need the console window open to see what happened. To start Poggram without a console at all, launch it with <code>pythonw.exe</code> (or the included <code>Poggram.vbs</code>) instead of <code>python.exe</code>.</p>
+          </details>
+        </div>
+
+        <div class="settings-tab-panel hide" id="settings-tab-shortcuts" role="tabpanel">
+          <p class="step-hint" style="margin-bottom:var(--space-3)">Click "Change" then press a key combination to rebind an action. Press Escape while recording to cancel. Bindings are saved on this device only.</p>
+          <div class="shortcuts-list" id="shortcuts-list"></div>
+          <button type="button" id="reset-shortcuts-btn" style="margin-top:var(--space-3);padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-family:var(--sys);font-size:0.82rem;cursor:pointer;color:var(--ink)">Reset all to defaults</button>
+        </div>
+      </div>
+
+      <form class="settings-step" id="step-connect">
+        <p class="step-hint">Get your API ID and API hash from <a href="https://my.telegram.org" target="_blank" rel="noopener">my.telegram.org</a> first - this app needs them to talk to Telegram as your account.</p>
+        <label>API ID<input type="text" id="f-api-id" inputmode="numeric" autocomplete="off" required></label>
+        <label>API hash<input type="text" id="f-api-hash" autocomplete="off" required></label>
+        <label>Phone number<input type="text" id="f-phone" placeholder="+1234567890" autocomplete="off" required></label>
+        <button type="submit">Connect</button>
+        <p class="step-error" id="connect-error"></p>
+      </form>
+
+      <form class="settings-step hide" id="step-code">
+        <p class="step-hint">Enter the code Telegram just sent you.</p>
+        <label>Code<input type="text" id="f-code" inputmode="numeric" autocomplete="off" required></label>
+        <button type="submit">Submit code</button>
+        <p class="step-error" id="code-error"></p>
+      </form>
+
+      <form class="settings-step hide" id="step-password">
+        <p class="step-hint">Your account has two-factor authentication enabled - enter your password.</p>
+        <label>Password<input type="password" id="f-password" autocomplete="off" required></label>
+        <button type="submit">Submit password</button>
+        <p class="step-error" id="password-error"></p>
+      </form>
+
+      <form class="settings-step hide" id="step-archive">
+        <p class="step-hint">Select an existing archive supergroup, or create a new one. Scanning lists groups you own — read-only, no data is touched.</p>
+        <button type="button" id="scan-archives-btn" style="align-self:stretch;margin-bottom:var(--space-3)">Scan for existing archive groups</button>
+        <div id="scan-results" class="hide" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;margin-bottom:var(--space-3)"></div>
+        <hr style="border:none;border-top:1px solid var(--line);margin:var(--space-2) 0">
+        <p class="step-hint" style="font-size:0.78rem">Or create a new dedicated supergroup:</p>
+        <label>Supergroup name<input type="text" id="f-archive-title" value="Poggram Archive" required></label>
+        <button type="submit">Create supergroup</button>
+        <p class="step-error" id="archive-error"></p>
+      </form>
+    </section>
+  </main>
+</div>
+
+<div class="context-menu hide" id="context-menu"></div>
+<div class="version-panel hide" id="version-panel"></div>
+<div class="version-panel sync-create-panel hide" id="sync-create-panel"></div>
+<div class="version-panel move-panel hide" id="move-panel"></div>
+<div class="version-panel hide" id="backup-panel"></div>
+<div class="version-panel hide" id="properties-panel"></div>
+<div class="version-panel hide" id="about-panel">
+  <div class="version-panel-content about-content">
+    <div class="version-panel-header">
+      <span class="version-panel-title">About Poggram</span>
+      <button type="button" class="version-panel-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="about-body">
+      <img class="about-logo" src="{{ url_for('static', filename='poggram.png') }}?v={{ asset_version }}" alt="">
+      <div class="about-name">Poggram</div>
+      <p class="about-tagline">A local desktop app that uses Telegram as file storage - virtual folders, live search and streaming on top of a private archive channel that only this app writes to.</p>
+      <div class="about-rows">
+        <div class="about-row"><span>Version</span><span class="about-value" id="about-version">-</span></div>
+        <div class="about-row"><span>Created by</span><a href="https://github.com/phuong-fang" target="_blank" rel="noopener">phuong-fang</a></div>
+        <div class="about-row"><span>Source</span><a href="https://github.com/phuong-fang/Poggram" target="_blank" rel="noopener">github.com/phuong-fang/Poggram</a></div>
+        <div class="about-row"><span>License</span><span class="about-value">GPL-3.0</span></div>
+        <div class="about-row"><span>Built with</span><span class="about-value">Flask &middot; pywebview &middot; Telethon</span></div>
+        <div class="about-row"><span>Your files live in</span><span class="about-value" id="about-archive">-</span></div>
+        <div class="about-row"><span>Stored</span><span class="about-value" id="about-stored">-</span></div>
+      </div>
+      <p class="about-foot">Press <kbd>F1</kbd> any time to reopen this.</p>
+    </div>
+  </div>
+</div>
+<div class="media-viewer image-viewer hide" id="image-viewer">
+  <div class="media-viewer-topbar">
+    <span class="media-viewer-filename" id="image-viewer-filename"></span>
+    <span class="image-viewer-zoom" id="image-viewer-zoom"></span>
+    <button type="button" class="media-viewer-close" id="image-viewer-close-btn" aria-label="Close"><i data-lucide="x"></i></button>
+  </div>
+  <div class="media-viewer-stage" id="image-viewer-stage">
+    <button type="button" class="media-viewer-nav media-viewer-prev" id="image-viewer-prev-btn" aria-label="Previous image"><i data-lucide="chevron-left"></i></button>
+    <div class="media-viewer-loading hide" id="image-viewer-loading">Loading&hellip;</div>
+    <div class="media-viewer-error hide" id="image-viewer-error">Couldn't load this image.</div>
+    <img class="image-viewer-img hide" id="image-viewer-img" draggable="false" alt="">
+    <button type="button" class="media-viewer-nav media-viewer-next" id="image-viewer-next-btn" aria-label="Next image"><i data-lucide="chevron-right"></i></button>
+  </div>
+</div>
+<div class="media-viewer video-viewer hide" id="video-viewer">
+  <div class="media-viewer-topbar">
+    <span class="media-viewer-filename" id="video-viewer-filename"></span>
+    <button type="button" class="media-viewer-skip-btn" id="video-viewer-skip-back-btn" title="Back 10 seconds">-10s</button>
+    <button type="button" class="media-viewer-skip-btn" id="video-viewer-skip-fwd-btn" title="Forward 10 seconds">+10s</button>
+    <select class="media-viewer-speed-select" id="video-viewer-speed-select" title="Playback speed">
+      <option value="0.5">0.5x</option>
+      <option value="0.75">0.75x</option>
+      <option value="1" selected>1x</option>
+      <option value="1.25">1.25x</option>
+      <option value="1.5">1.5x</option>
+      <option value="1.75">1.75x</option>
+      <option value="2">2x</option>
+    </select>
+    <button type="button" class="media-viewer-external-btn" id="video-viewer-external-btn">Play in external player</button>
+    <button type="button" class="media-viewer-skip-btn" id="video-viewer-set-thumb-btn" title="Use this frame as thumbnail">Use as thumbnail</button>
+    <button type="button" class="media-viewer-close" id="video-viewer-close-btn" aria-label="Close"><i data-lucide="x"></i></button>
+  </div>
+  <div class="media-viewer-stage" id="video-viewer-stage">
+    <button type="button" class="media-viewer-nav media-viewer-prev" id="video-viewer-prev-btn" aria-label="Previous video"><i data-lucide="chevron-left"></i></button>
+    <div class="media-viewer-error hide" id="video-viewer-error">Couldn't play this video.</div>
+    <video class="video-viewer-video hide" id="video-viewer-video" controls></video>
+    <button type="button" class="media-viewer-nav media-viewer-next" id="video-viewer-next-btn" aria-label="Next video"><i data-lucide="chevron-right"></i></button>
+  </div>
+</div>
+<div class="media-viewer audio-viewer hide" id="audio-viewer">
+  <div class="media-viewer-topbar">
+    <span class="media-viewer-filename" id="audio-viewer-filename"></span>
+    <button type="button" class="media-viewer-skip-btn" id="audio-viewer-skip-back-btn" title="Back 10 seconds">-10s</button>
+    <button type="button" class="media-viewer-skip-btn" id="audio-viewer-skip-fwd-btn" title="Forward 10 seconds">+10s</button>
+    <select class="media-viewer-speed-select" id="audio-viewer-speed-select" title="Playback speed">
+      <option value="0.5">0.5x</option>
+      <option value="0.75">0.75x</option>
+      <option value="1" selected>1x</option>
+      <option value="1.25">1.25x</option>
+      <option value="1.5">1.5x</option>
+      <option value="1.75">1.75x</option>
+      <option value="2">2x</option>
+    </select>
+    <button type="button" class="media-viewer-external-btn" id="audio-viewer-external-btn">Play in external player</button>
+    <button type="button" class="media-viewer-close" id="audio-viewer-close-btn" aria-label="Close"><i data-lucide="x"></i></button>
+  </div>
+  <div class="media-viewer-stage" id="audio-viewer-stage">
+    <button type="button" class="media-viewer-nav media-viewer-prev" id="audio-viewer-prev-btn" aria-label="Previous audio"><i data-lucide="chevron-left"></i></button>
+    <div class="media-viewer-error hide" id="audio-viewer-error">Couldn't play this audio.</div>
+    <audio class="audio-viewer-audio" id="audio-viewer-audio" controls></audio>
+    <button type="button" class="media-viewer-nav media-viewer-next" id="audio-viewer-next-btn" aria-label="Next audio"><i data-lucide="chevron-right"></i></button>
+  </div>
+</div>
+
+<div class="restore-overlay hide" id="restore-overlay">
+  <div class="restore-overlay-content">
+    <i data-lucide="loader-2" class="restore-overlay-spinner"></i>
+    <div class="restore-overlay-text" id="restore-overlay-text">Restoring backup...</div>
+    <div class="restore-overlay-bar"><div class="restore-overlay-bar-fill" id="restore-overlay-bar-fill"></div></div>
+    <div class="restore-overlay-subtext">Please wait, do not close the application</div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}?v={{ asset_version }}"></script>
+</body>
+</html>
