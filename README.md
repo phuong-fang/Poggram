@@ -29,7 +29,8 @@ as your own account, and the index lives in a local SQLite database beside it.
 - **File-explorer UI** — folder tree, breadcrumbs, grid and list views,
   multi-select, context menus, drag-and-drop upload, Trash with restore.
 - **Streaming, not downloading** — video and audio play with range requests
-  served straight from Telegram, so a 4 GB file starts instantly.
+  served straight from Telegram.
+- **Large upload/download** Large file get split to multiple chunk at upload. 16GB file can be split to 8 smaller 2GB files (Or 4 smaller 4GB files with premium). Download simply merge the file back to it original state.
 - **Search** — scoped to the open folder and its subfolders, live as you type.
 - **Versioning** — upload over an existing file and keep its history.
 - **Folder sync** — watch a local folder and upload new files automatically.
