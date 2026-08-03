@@ -109,7 +109,7 @@ Poggram is a client for your own account, so [Telegram's ToS](https://telegram.o
 
 ## Where things are kept
 
-Everything local lives in `data/`, which is not tracked by git:
+Everything local lives in `data/`:
 
 | | |
 |---|---|
