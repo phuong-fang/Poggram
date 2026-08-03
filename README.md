@@ -119,6 +119,4 @@ Everything local lives in `data/`:
 | `data/poggram.log` | the app log (Settings → Interface → Open log file) |
 
 **Treat the session file as a credential.** It authorises access to your
-Telegram account. It is encrypted with a key held in the Windows credential
-store, so copying it to another machine alone won't grant access — but it
-should not be shared or committed.
+Telegram account and should not be share regardless of encryption.
