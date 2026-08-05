@@ -59,7 +59,8 @@
   }
   figcaption { margin-top: 8px; color: var(--ink-faint); font-size: 0.86rem; text-align: center; }
 
-  section { padding: 44px 0; border-top: 1px solid var(--line-soft); }
+  section { padding: 56px 0 60px; border-top: 1px solid var(--line-soft); }
+  section > h2 { margin-top: 4px; }
   h2 { font-size: 1.5rem; margin: 0 0 6px; letter-spacing: -0.01em; }
   section > p.lede { margin-top: 0; color: var(--ink-soft); }
 
@@ -129,12 +130,14 @@
 </section>
 
 <section class="wrap">
-  <h2>Screenshots</h2>
+  <h2>Preview</h2>
   <div class="grid">
     <figure><img src="preview/UI%20List%20view%20Expand%20Side%20bar%20160px.png" alt="List view" loading="lazy"><figcaption>List view</figcaption></figure>
     <figure><img src="preview/Image%20viewing.png" alt="Image viewer" loading="lazy"><figcaption>Built-in image viewer</figcaption></figure>
     <figure><img src="preview/Video%20streaming.png" alt="Video streaming" loading="lazy"><figcaption>Video streamed from Telegram</figcaption></figure>
     <figure><img src="preview/Upload%20process.png" alt="Transfers view" loading="lazy"><figcaption>Transfers, with per-file progress and ETA</figcaption></figure>
+    <figure><img src="preview/UI%20Grid%20view%20Collapse%20Side%20bar%20160px.png" alt="Grid view with the sidebar collapsed" loading="lazy"><figcaption>Collapsed sidebar, more room for files</figcaption></figure>
+    <figure><img src="preview/UI%20Grid%20view%20Collapse%20Side%20bar%2050px.png" alt="Grid view at the smallest item size" loading="lazy"><figcaption>Item size down to 50px</figcaption></figure>
   </div>
 </section>
 
@@ -157,9 +160,9 @@ python -m venv .venv
 <section class="wrap">
   <h2>Worth knowing</h2>
   <div class="grid">
-    <div class="card"><h3>Windows only</h3><p>The interface runs on WebView2, which ships with Windows 11.</p></div>
+    <div class="card"><h3>Windows only currently</h3><p>The interface runs on WebView2, which ships with Windows 11.</p></div>
     <div class="card"><h3>Early release</h3><p>0.1.0 has been used daily against a real account, but by one person on one machine. Keep anything irreplaceable backed up elsewhere.</p></div>
-    <div class="card"><h3>Your account, your rules</h3><p>Poggram is a client for your own account, so <a href="https://telegram.org/tos">Telegram's ToS</a> apply.</p></div>
+    <div class="card"><h3>Don't abuse it</h3><p>Poggram is a client for your own account, so <a href="https://telegram.org/tos">Telegram's ToS</a> apply.</p></div>
     <div class="card"><h3>Portable by default</h3><p>Everything local sits in a <code>data</code> folder next to the executable. Move it and your vault moves with it; delete it and no trace remains.</p></div>
   </div>
 </section>
