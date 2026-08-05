@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poggram — a file explorer backed by Telegram</title>
+<meta name="description" content="A Windows desktop file explorer whose storage is a private Telegram channel. Virtual folders, live search, streaming playback. Free and open source, GPL-3.0.">
+<link rel="icon" href="static/poggram.ico" sizes="any">
+<meta property="og:title" content="Poggram">
+<meta property="og:description" content="A desktop file explorer whose storage is a private Telegram channel.">
+<meta property="og:image" content="preview/UI%20Grid%20view%20Expand%20Side%20bar%20160px.png">
+<meta property="og:type" content="website">
+<style>
+  /* Self-contained: no CDN, no fonts to fetch, so the page works offline and
+     can't break when something external moves. */
+  :root {
+    --bg: #0e1013; --surface: #161a1f; --line: #262c34; --line-soft: #1e232a;
+    --ink: #e8ecf1; --ink-soft: #a9b4c0; --ink-faint: #7b8794;
+    --accent: #5aaee6; --accent-deep: #8ccbf0;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff; --surface: #f6f8fa; --line: #d8dee4; --line-soft: #eaeef2;
+      --ink: #1f2328; --ink-soft: #4b535d; --ink-faint: #6e7781;
+      --accent: #1f7ab8; --accent-deep: #10598c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 20px; }
+  a { color: var(--accent); }
+
+  header { text-align: center; padding: 72px 0 40px; }
+  header img.logo { width: 88px; height: 88px; }
+  h1 { margin: 14px 0 6px; font-size: 2.6rem; letter-spacing: -0.02em; }
+  .tagline { margin: 0 auto; max-width: 34em; font-size: 1.12rem; color: var(--ink-soft); }
+
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 30px 0 8px; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 10px;
+    text-decoration: none; font-weight: 600; border: 1px solid var(--line);
+  }
+  .btn-primary { background: var(--accent); color: #06131c; border-color: transparent; }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-secondary { color: var(--ink); background: var(--surface); }
+  .btn-secondary:hover { border-color: var(--ink-faint); }
+  .sub { color: var(--ink-faint); font-size: 0.86rem; }
+
+  /* Wide screenshots scroll inside their own box rather than the page. */
+  figure { margin: 0 0 14px; }
+  figure img {
+    display: block; width: 100%; height: auto; border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface);
+  }
+  figcaption { margin-top: 8px; color: var(--ink-faint); font-size: 0.86rem; text-align: center; }
+
+  section { padding: 44px 0; border-top: 1px solid var(--line-soft); }
+  h2 { font-size: 1.5rem; margin: 0 0 6px; letter-spacing: -0.01em; }
+  section > p.lede { margin-top: 0; color: var(--ink-soft); }
+
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 1rem; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 0.92rem; }
+
+  ol.steps { padding-left: 22px; }
+  ol.steps li { margin-bottom: 10px; color: var(--ink-soft); }
+  ol.steps strong { color: var(--ink); }
+
+  code, pre {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    background: var(--line-soft); border-radius: 6px;
+  }
+  code { padding: 2px 6px; font-size: 0.9em; }
+  pre { padding: 14px 16px; overflow-x: auto; border: 1px solid var(--line); }
+  pre code { background: none; padding: 0; }
+
+  .note {
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 14px 16px; color: var(--ink-soft); font-size: 0.94rem;
+  }
+  footer { padding: 40px 0 60px; text-align: center; color: var(--ink-faint); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <img class="logo" src="static/poggram.png" alt="">
+  <h1>Poggram</h1>
+  <p class="tagline">A desktop file explorer whose storage is a private Telegram channel — virtual folders, live search and streaming playback over an archive only this app writes to.</p>
+  <div class="cta">
+    <a class="btn btn-primary" href="https://github.com/phuong-fang/Poggram/releases/latest">Download for Windows</a>
+    <a class="btn btn-secondary" href="https://github.com/phuong-fang/Poggram">View source</a>
+  </div>
+  <p class="sub">Portable — extract and run. No installer, no Python needed.</p>
+</header>
+
+<div class="wrap">
+  <figure>
+    <img src="preview/UI%20Grid%20view%20Expand%20Side%20bar%20160px.png" alt="Poggram grid view with folder tree and thumbnails" loading="lazy">
+  </figure>
+</div>
+
+<section class="wrap">
+  <h2>What it is</h2>
+  <p class="lede">Your files physically live in Telegram, as messages in a private supergroup. Poggram is the local index and interface that makes them behave like files: a folder tree, search, thumbnails, versioning and a Trash — none of which a chat gives you.</p>
+  <p class="note">Nothing passes through a third party. The app talks to Telegram directly as your own account, and the index sits in a local database beside it.</p>
+</section>
+
+<section class="wrap">
+  <h2>Features</h2>
+  <div class="grid">
+    <div class="card"><h3>Explorer, not a chat</h3><p>Folder tree, breadcrumbs, grid and list views, multi-select, context menus, drag-and-drop upload, Trash with restore.</p></div>
+    <div class="card"><h3>Streams instead of downloading</h3><p>Video and audio play through range requests served from Telegram, rather than downloading first.</p></div>
+    <div class="card"><h3>Files past Telegram's limit</h3><p>Large files are split into chunks on upload — a 16&nbsp;GB file becomes eight 2&nbsp;GB parts, or four 4&nbsp;GB parts with Premium — and merged back on download.</p></div>
+    <div class="card"><h3>Live search</h3><p>Scoped to the folder you have open and everything beneath it, in realtime without slowdown.</p></div>
+    <div class="card"><h3>Versions</h3><p>Upload over an existing file and keep its history, with restore.</p></div>
+    <div class="card"><h3>Folder sync</h3><p>Watch a local folder and upload new files automatically, one at a time.</p></div>
+    <div class="card"><h3>Resumable transfers</h3><p>Pause and continue, and pick up again after a restart mid-upload.</p></div>
+    <div class="card"><h3>Rebuildable</h3><p>The index itself is backed up into the archive, so a new machine can restore from Telegram alone.</p></div>
+    <div class="card"><h3>Hide to tray</h3><p>Closing the window keeps transfers and sync running in the background.</p></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Screenshots</h2>
+  <div class="grid">
+    <figure><img src="preview/UI%20List%20view%20Expand%20Side%20bar%20160px.png" alt="List view" loading="lazy"><figcaption>List view</figcaption></figure>
+    <figure><img src="preview/Image%20viewing.png" alt="Image viewer" loading="lazy"><figcaption>Built-in image viewer</figcaption></figure>
+    <figure><img src="preview/Video%20streaming.png" alt="Video streaming" loading="lazy"><figcaption>Video streamed from Telegram</figcaption></figure>
+    <figure><img src="preview/Upload%20process.png" alt="Transfers view" loading="lazy"><figcaption>Transfers, with per-file progress and ETA</figcaption></figure>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Getting started</h2>
+  <ol class="steps">
+    <li><strong>Get Telegram API keys.</strong> Sign in at <a href="https://my.telegram.org/auth">my.telegram.org</a>, open <em>API development tools</em>, and copy the <code>api_id</code> and <code>api_hash</code>. Poggram acts as your own account, so it can't create these for you.</li>
+    <li><strong>Download and extract</strong> the release, then run <code>Poggram.exe</code>.</li>
+    <li><strong>Sign in.</strong> In Settings, paste the keys and your phone number, press <em>Connect</em>, then enter the code Telegram sends you.</li>
+    <li><strong>Create the archive.</strong> Press <em>Create supergroup</em> — that private group is where your files will live.</li>
+  </ol>
+  <p class="lede">Prefer running from source?</p>
+<pre><code>git clone https://github.com/phuong-fang/Poggram
+cd Poggram
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pythonw app.py</code></pre>
+</section>
+
+<section class="wrap">
+  <h2>Worth knowing</h2>
+  <div class="grid">
+    <div class="card"><h3>Windows only</h3><p>The interface runs on WebView2, which ships with Windows 11.</p></div>
+    <div class="card"><h3>Early release</h3><p>0.1.0 has been used daily against a real account, but by one person on one machine. Keep anything irreplaceable backed up elsewhere.</p></div>
+    <div class="card"><h3>Your account, your rules</h3><p>Poggram is a client for your own account, so <a href="https://telegram.org/tos">Telegram's ToS</a> apply.</p></div>
+    <div class="card"><h3>Portable by default</h3><p>Everything local sits in a <code>data</code> folder next to the executable. Move it and your vault moves with it; delete it and no trace remains.</p></div>
+  </div>
+</section>
+
+<footer class="wrap">
+  <p><a href="https://github.com/phuong-fang/Poggram">Source</a> · <a href="https://github.com/phuong-fang/Poggram/releases/latest">Releases</a> · <a href="https://github.com/phuong-fang/Poggram/blob/main/LICENSE">GPL-3.0</a></p>
+  <p>Built by <a href="https://github.com/phuong-fang">phuong-fang</a>. Not affiliated with Telegram.</p>
+</footer>
+
+</body>
+</html>
