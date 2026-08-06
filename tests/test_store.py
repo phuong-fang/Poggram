@@ -150,3 +150,54 @@ def test_clear_cache_empty(isolated_store):
 def test_prune_cache_unlimited(isolated_store):
     freed = isolated_store.prune_cache()
     assert freed == 0
+
+def test_get_or_create_folder_treats_nfc_and_nfd_as_the_same_name(isolated_store):
+
+    import unicodedata
+
+    nfc = unicodedata.normalize("NFC", "Café Photos")
+    nfd = unicodedata.normalize("NFD", "Café Photos")
+    assert nfc != nfd, "test is meaningless if these are the same string"
+
+    first, err = isolated_store.get_or_create_folder(nfc, None)
+    assert err is None
+    second, err = isolated_store.get_or_create_folder(nfd, None)
+    assert err is None
+    assert second["id"] == first["id"], (
+        "the same visible name produced two sibling folders - exactly the "
+        "duplicate get_or_create_folder exists to prevent"
+    )
+
+def test_get_or_create_folder_still_separates_genuinely_different_names(isolated_store):
+
+    a, _ = isolated_store.get_or_create_folder("Cafe", None)
+    b, _ = isolated_store.get_or_create_folder("Café", None)
+    assert a["id"] != b["id"]
+
+def test_names_in_any_script_survive_a_store_round_trip(isolated_store):
+
+    names = [
+        "ホタル 蛍の光.mp4", "中文文件名.zip", "한국어.png", "Привет мир.doc",
+        "Ελληνικό.txt", "ملف عربي.pdf", "קובץ עברי.txt", "ไฟล์ไทย.mp4",
+        "हिन्दी.jpg", "Phượng Nguyễn.mkv", "trip 🏖️🎉.jpg", "会議 Привет 🎬.mkv",
+    ]
+    files = [{
+        "id": f"f{i}", "name": n, "folder_id": None, "size_bytes": 1,
+        "mime_type": "application/octet-stream", "telegram_chat_id": 1,
+        "chunks": [], "cached_chunks": [], "versions": [],
+        "date_uploaded": "2026-08-06T00:00:00",
+        "date_modified": "2026-08-06T00:00:00", "deleted": False,
+    } for i, n in enumerate(names)]
+    isolated_store.save_files(files)
+    back = {f["name"] for f in isolated_store.load_files()}
+    assert back == set(names)
+
+def test_content_disposition_is_latin1_safe_for_every_script():
+
+    from routes_streaming import _content_disposition
+
+    for name in ["ホタル.mp4", "中文.zip", "Привет.doc", "ملف.pdf", "קובץ.txt",
+                 "ไฟล์.mp4", "हिन्दी.jpg", "Phượng.mkv", "trip 🏖️.jpg"]:
+        header = _content_disposition(name)
+        header.encode("latin-1")
+        assert "filename*=UTF-8''" in header, "the real name must survive"

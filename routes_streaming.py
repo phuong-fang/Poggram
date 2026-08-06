@@ -334,7 +334,9 @@ def register(app):
             }), 400
         stream_url = request.host_url.rstrip("/") + f"/api/files/{file_id}/content"
         try:
-            subprocess.Popen([player_path, stream_url])
+
+            subprocess.Popen([player_path, stream_url],
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except OSError as e:
             return jsonify({"error": f"Couldn't launch player: {e}"}), 500
         return jsonify({"ok": True})

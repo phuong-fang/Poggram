@@ -315,6 +315,7 @@ def _apply_change(change, pair_id, pair_config, is_initial_scan=False, root_loca
             lock.release()
             semaphore.release()
 
+    semaphore = None
     try:
 
         rel_path = os.path.relpath(path, root_local_path) if root_local_path else ""
@@ -345,9 +346,12 @@ def _apply_change(change, pair_id, pair_config, is_initial_scan=False, root_loca
             kwargs["target_file_id"] = vault_file_id
         _start_upload_fn(path, filename, folder_id,
             settings.get("max_chunk_size_bytes") or 1_900_000_000, **kwargs)
-    except OSError:
+    except Exception:
+
+        logger.exception(f"Sync: failed to dispatch re-upload of {path}")
         lock.release()
-        semaphore.release()
+        if semaphore is not None:
+            semaphore.release()
 
 def _apply_addition(addition, pair_id, pair_config, is_initial_scan=False, root_local_path=None):
 
@@ -435,6 +439,7 @@ def _queue_upload(path, pair_id, pair_config, root_local_path):
             lock.release()
             semaphore.release()
 
+    semaphore = None
     try:
 
         pair = store.find_sync_pair(pair_id)
@@ -453,11 +458,13 @@ def _queue_upload(path, pair_id, pair_config, root_local_path):
             on_done=_on_done, on_duplicate=_on_duplicate, skip_duplicate_check=False, source="sync",
             relative_path=rel_path.replace(os.sep, "/"),
         )
-    except OSError:
+    except Exception:
 
+        logger.exception(f"Sync: failed to dispatch upload of {path}")
         _clear_in_flight(pair_id, path)
         lock.release()
-        semaphore.release()
+        if semaphore is not None:
+            semaphore.release()
 
 _vault_folder_cache = {}
 _vault_folder_cache_guard = threading.Lock()

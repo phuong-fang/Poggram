@@ -9,6 +9,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import unicodedata
 import uuid
 import zipfile
 from collections import OrderedDict
@@ -388,8 +389,13 @@ def get_or_create_folder(name: str, parent_id: Optional[str] = None):
     if not name:
         return None, "Name is required."
     folders = load_folders()
+
+    folded = unicodedata.normalize("NFC", name)
     existing = next(
-        (f for f in folders if f["parent_id"] == parent_id and f["name"] == name and not f["deleted"]), None
+        (f for f in folders
+         if f["parent_id"] == parent_id
+         and unicodedata.normalize("NFC", f["name"]) == folded
+         and not f["deleted"]), None
     )
     if existing is not None:
         return existing, None
