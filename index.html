@@ -14,8 +14,6 @@
 <meta property="og:image" content="preview/UI%20Grid%20view%20Expand%20Side%20bar%20160px.png">
 <meta property="og:type" content="website">
 <style>
-  /* Self-contained: no CDN, no fonts to fetch, so the page works offline and
-     can't break when something external moves. */
   :root {
     --bg: #0e1013; --surface: #161a1f; --line: #262c34; --line-soft: #1e232a;
     --ink: #e8ecf1; --ink-soft: #a9b4c0; --ink-faint: #7b8794;
@@ -54,7 +52,6 @@
   .btn-secondary:hover { border-color: var(--ink-faint); }
   .sub { color: var(--ink-faint); font-size: 0.86rem; }
 
-  /* Wide screenshots scroll inside their own box rather than the page. */
   figure { margin: 0 0 14px; }
   figure img {
     display: block; width: 100%; height: auto; border: 1px solid var(--line);
@@ -62,12 +59,6 @@
   }
   figcaption { margin-top: 8px; color: var(--ink-faint); font-size: 0.86rem; text-align: center; }
 
-  /* section.wrap, not section: every section carries class="wrap", and
-     .wrap's own `padding: 0 20px` (a class, 0-1-0) outranks a bare `section`
-     type selector (0-0-1) no matter which comes later - so vertical padding
-     set on `section` alone was silently discarded and the rule sat against the
-     cards above it. Horizontal padding is repeated here for the same reason:
-     this declaration now wins outright, so it has to carry the 20px too. */
   section.wrap { padding: 56px 20px 60px; border-top: 1px solid var(--line-soft); }
   section.wrap > h2 { margin-top: 4px; }
   h2 { font-size: 1.5rem; margin: 0 0 6px; letter-spacing: -0.01em; }
@@ -119,8 +110,8 @@
 
 <section class="wrap">
   <h2>What it is</h2>
-  <p class="lede">Your files physically live in Telegram, as messages in a private supergroup. Poggram is the local index and interface that makes them behave like files: a folder tree, search, thumbnails, versioning and a Trash — none of which a chat gives you.</p>
-  <p class="note">Nothing passes through a third party. The app talks to Telegram directly as your own account, and the index sits in a local database beside it.</p>
+  <p class="lede">Your files live in Telegram, as messages in a private supergroup. Poggram is the local index and interface that makes them behave like files: a folder tree, search, thumbnails, versioning and a Trash — none of which a chat gives you.</p>
+  <p class="note">Nothing passes through a third party. The app talks to Telegram directly as your own account, the index sits in a local database beside it.</p>
 </section>
 
 <section class="wrap">
@@ -156,7 +147,7 @@
     <li><strong>Get Telegram API keys.</strong> Sign in at <a href="https://my.telegram.org/auth">my.telegram.org</a>, open <em>API development tools</em>, and copy the <code>api_id</code> and <code>api_hash</code>. Poggram acts as your own account, so it can't create these for you.</li>
     <li><strong>Download and extract</strong> the release, then run <code>Poggram.exe</code>.</li>
     <li><strong>Sign in.</strong> In Settings, paste the keys and your phone number, press <em>Connect</em>, then enter the code Telegram sends you.</li>
-    <li><strong>Create the archive.</strong> Press <em>Create supergroup</em> — that private group is where your files will live.</li>
+    <li><strong>Create the archive.</strong> Press <em>Create supergroup</em> — that private group is where your files live.</li>
   </ol>
   <p class="lede">Prefer running from source?</p>
 <pre><code>git clone https://github.com/phuong-fang/Poggram
@@ -170,9 +161,9 @@ python -m venv .venv
   <h2>Worth knowing</h2>
   <div class="grid">
     <div class="card"><h3>Windows only currently</h3><p>The interface runs on WebView2, which ships with Windows 11.</p></div>
-    <div class="card"><h3>Early release</h3><p>0.1.0 has been used daily against a real account, but by one person on one machine. Keep anything irreplaceable backed up elsewhere.</p></div>
-    <div class="card"><h3>Don't abuse it</h3><p>Poggram is a client for your own account, so <a href="https://telegram.org/tos">Telegram's ToS</a> apply.</p></div>
-    <div class="card"><h3>Portable by default</h3><p>Everything local sits in a <code>data</code> folder next to the executable. Move it and your vault moves with it; delete it and no trace remains.</p></div>
+    <div class="card"><h3>Early release</h3><p>0.1.0 has been used daily against a real account, but by one person on two machine. Keep anything irreplaceable backed up elsewhere.</p></div>
+    <div class="card"><h3>Don't abuse</h3><p>Poggram is a client for your own account, so <a href="https://telegram.org/tos">Telegram's ToS</a> apply.</p></div>
+    <div class="card"><h3>Portable</h3><p>Everything sits in a <code>data</code> folder next to the executable. Move it and your vault moves; delete it and no trace remains.</p></div>
   </div>
 </section>
 
