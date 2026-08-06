@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 def _install_file_logging():
+
+    if "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules:
+        return
     try:
         from logging.handlers import RotatingFileHandler
 

@@ -201,3 +201,103 @@ def test_content_disposition_is_latin1_safe_for_every_script():
         header = _content_disposition(name)
         header.encode("latin-1")
         assert "filename*=UTF-8''" in header, "the real name must survive"
+
+def test_find_file_matches_a_scan_of_load_files(isolated_store):
+
+    folder, _ = isolated_store.create_folder("F", None)
+    files = [{
+        "id": f"f{i}", "name": f"file{i}.bin", "folder_id": folder["id"],
+        "size_bytes": 10 + i, "mime_type": "application/octet-stream",
+        "telegram_chat_id": 1, "chunks": [{"message_id": i, "size_bytes": 10 + i}],
+        "cached_chunks": [], "versions": [], "date_uploaded": "2026-08-06T00:00:00",
+        "date_modified": "2026-08-06T00:00:00", "deleted": i % 2 == 0,
+    } for i in range(5)]
+    isolated_store.save_files(files)
+
+    loaded = isolated_store.load_files()
+    for record in loaded:
+        assert isolated_store.find_file(record["id"]) == record
+
+    assert isolated_store.find_file("does-not-exist") is None
+
+def test_find_duplicate_matches_the_version_hash_not_the_column(isolated_store):
+
+    folder, _ = isolated_store.create_folder("F", None)
+    isolated_store.save_files([{
+        "id": "no-col", "name": "a.bin", "folder_id": folder["id"], "size_bytes": 1,
+        "mime_type": "application/octet-stream", "telegram_chat_id": 1,
+        "chunks": [], "cached_chunks": [],
+
+        "content_hash": None,
+        "versions": [{"chunks": [], "size_bytes": 1, "mime_type": None,
+                      "cached_chunks": [], "uploaded_at": "2026-08-06T00:00:00",
+                      "content_hash": "hash-in-version", "has_thumbnail": False}],
+        "current_version": 0,
+        "date_uploaded": "2026-08-06T00:00:00", "date_modified": "2026-08-06T00:00:00",
+        "deleted": False,
+    }])
+
+    found = isolated_store.find_duplicate_by_hash("hash-in-version")
+    assert found is not None and found["id"] == "no-col", (
+        "a file whose hash lives only in its version JSON was not recognised "
+        "as a duplicate - it would be re-uploaded"
+    )
+    assert isolated_store.find_duplicate_by_hash("nope") is None
+    assert isolated_store.find_duplicate_by_hash(None) is None
+
+def test_find_duplicate_ignores_trashed_files(isolated_store):
+    folder, _ = isolated_store.create_folder("F", None)
+    isolated_store.save_files([{
+        "id": "gone", "name": "a.bin", "folder_id": folder["id"], "size_bytes": 1,
+        "mime_type": "application/octet-stream", "telegram_chat_id": 1,
+        "chunks": [], "cached_chunks": [], "content_hash": "h",
+        "versions": [{"chunks": [], "size_bytes": 1, "mime_type": None,
+                      "cached_chunks": [], "uploaded_at": "2026-08-06T00:00:00",
+                      "content_hash": "h", "has_thumbnail": False}],
+        "current_version": 0,
+        "date_uploaded": "2026-08-06T00:00:00", "date_modified": "2026-08-06T00:00:00",
+        "deleted": True,
+    }])
+    assert isolated_store.find_duplicate_by_hash("h") is None
+
+def _versioned_file(fid, sizes, current, deleted=False):
+    return {
+        "id": fid, "name": f"{fid}.bin", "folder_id": None, "size_bytes": sizes[current],
+        "mime_type": "application/octet-stream", "telegram_chat_id": 1,
+        "chunks": [], "cached_chunks": [],
+        "versions": [{"chunks": [], "size_bytes": s, "mime_type": None,
+                      "cached_chunks": [], "uploaded_at": "2026-08-06T00:00:00",
+                      "content_hash": None, "has_thumbnail": False} for s in sizes],
+        "current_version": current,
+        "date_uploaded": "2026-08-06T00:00:00", "date_modified": "2026-08-06T00:00:00",
+        "deleted": deleted,
+    }
+
+def test_file_stats_matches_the_python_aggregation(isolated_store):
+
+    isolated_store.save_files([
+        _versioned_file("a", [100], 0),
+        _versioned_file("b", [100, 250, 400], 2),
+        _versioned_file("c", [500, 50], 0),
+        _versioned_file("d", [70], 0, deleted=True),
+    ])
+    files = isolated_store.load_files()
+    expected = {
+        "file_count": len(files),
+        "versioned_file_count": sum(1 for f in files if len(f["versions"]) > 1),
+        "total_current_bytes": sum(f["size_bytes"] for f in files),
+        "total_versioned_bytes": (sum(v["size_bytes"] for f in files for v in f["versions"])
+                                  - sum(f["size_bytes"] for f in files)),
+    }
+    assert isolated_store.file_stats() == expected
+
+    assert expected["file_count"] == 4
+    assert expected["versioned_file_count"] == 2
+    assert expected["total_current_bytes"] == 400 + 500 + 100 + 70
+    assert expected["total_versioned_bytes"] == (100 + 750 + 550 + 70) - (100 + 400 + 500 + 70)
+
+def test_file_stats_on_an_empty_vault(isolated_store):
+    assert isolated_store.file_stats() == {
+        "file_count": 0, "versioned_file_count": 0,
+        "total_current_bytes": 0, "total_versioned_bytes": 0,
+    }

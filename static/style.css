@@ -930,12 +930,12 @@ input[type="checkbox"] { accent-color: var(--accent); }
   font-size: 0.8rem; font-variant-numeric: tabular-nums;
 }
 
-.chunk-size-control { display: flex; align-items: center; gap: 6px; }
+.chunk-size-control { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .chunk-size-control input {
   width: 70px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
   background: var(--surface); font-family: var(--sys); font-size: 0.84rem; color: var(--ink); text-align: right;
 }
-.chunk-size-control .unit-label { color: var(--ink-faint); font-size: 0.8rem; }
+.chunk-size-control .unit-label { color: var(--ink-faint); font-size: 0.8rem; white-space: nowrap; }
 .chunk-size-control button {
   padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface);
   font-family: var(--sys); font-size: 0.78rem; cursor: pointer; color: var(--ink);

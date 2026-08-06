@@ -2993,8 +2993,9 @@ function _overallSpeedEtaText(bytesDone, remaining, moving) {
   return eta ? `${formatBytes(rate)}/s · ${eta} left` : `${formatBytes(rate)}/s`;
 }
 
-function rowActionButtons(label) {
-  return Array.from(uploadListEl.querySelectorAll(".upload-action-btn")).filter((btn) => btn.textContent === label);
+function rowActionButtons(action) {
+  return Array.from(uploadListEl.querySelectorAll(
+    `.upload-action-btn[data-action="${action}"]`));
 }
 document.getElementById("pause-all-btn").addEventListener("click", async () => {
 
@@ -3222,11 +3223,13 @@ function updateParentFolderProgress(row) {
 function setRowActions(row, actions) {
   const container = row.querySelector(".upload-actions");
   container.innerHTML = "";
-  actions.forEach(({ label, onClick }) => {
+  actions.forEach(({ label, action, onClick }) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "upload-action-btn";
     btn.textContent = label;
+
+    btn.dataset.action = action || label;
     btn.addEventListener("click", onClick);
     container.appendChild(btn);
   });

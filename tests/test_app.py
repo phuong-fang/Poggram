@@ -163,3 +163,60 @@ def test_a_body_over_the_cap_is_still_rejected(client, monkeypatch):
         content_type="multipart/form-data",
     )
     assert resp.status_code == 413
+
+def test_file_list_omits_the_heavy_server_only_fields(client, isolated_store):
+
+    folder, _ = isolated_store.create_folder("F", None)
+    isolated_store.save_files([{
+        "id": "f1", "name": "a.bin", "folder_id": folder["id"], "size_bytes": 5,
+        "mime_type": "application/octet-stream", "telegram_chat_id": 1,
+        "chunks": [{"message_id": 1, "size_bytes": 5}], "cached_chunks": [False],
+        "versions": [{"chunks": [{"message_id": 1, "size_bytes": 5}], "size_bytes": 5,
+                      "mime_type": None, "cached_chunks": [False],
+                      "uploaded_at": "2026-08-06T00:00:00", "content_hash": "h",
+                      "has_thumbnail": False}],
+        "current_version": 0,
+        "date_uploaded": "2026-08-06T00:00:00", "date_modified": "2026-08-06T00:00:00",
+        "deleted": False,
+    }])
+
+    record = client.get("/api/files").get_json()[0]
+    for omitted in ("chunks", "cached_chunks", "versions"):
+        assert omitted not in record, f"{omitted} is still being shipped to the browser"
+
+    for kept in ("id", "name", "folder_id", "size_bytes", "mime_type",
+                 "date_uploaded", "date_modified", "deleted", "current_version"):
+        assert kept in record, f"{kept} went missing from the list payload"
+
+def test_trash_list_is_trimmed_the_same_way(client, isolated_store):
+    folder, _ = isolated_store.create_folder("F", None)
+    isolated_store.save_files([{
+        "id": "f1", "name": "a.bin", "folder_id": folder["id"], "size_bytes": 5,
+        "mime_type": "application/octet-stream", "telegram_chat_id": 1,
+        "chunks": [{"message_id": 1, "size_bytes": 5}], "cached_chunks": [False],
+        "versions": [], "current_version": 0,
+        "date_uploaded": "2026-08-06T00:00:00", "date_modified": "2026-08-06T00:00:00",
+        "deleted": True,
+    }])
+    record = client.get("/api/trash").get_json()["files"][0]
+    assert "chunks" not in record and "versions" not in record
+    assert record["id"] == "f1"
+
+def test_server_side_users_of_versions_still_get_them(isolated_store):
+
+    folder, _ = isolated_store.create_folder("F", None)
+    isolated_store.save_files([{
+        "id": "f1", "name": "a.bin", "folder_id": folder["id"], "size_bytes": 5,
+        "mime_type": "application/octet-stream", "telegram_chat_id": 1,
+        "chunks": [{"message_id": 7, "size_bytes": 5}], "cached_chunks": [False],
+        "versions": [{"chunks": [{"message_id": 7, "size_bytes": 5}], "size_bytes": 5,
+                      "mime_type": None, "cached_chunks": [False],
+                      "uploaded_at": "2026-08-06T00:00:00", "content_hash": "h",
+                      "has_thumbnail": False}],
+        "current_version": 0,
+        "date_uploaded": "2026-08-06T00:00:00", "date_modified": "2026-08-06T00:00:00",
+        "deleted": False,
+    }])
+    record = isolated_store.load_files()[0]
+    assert record["versions"][0]["chunks"][0]["message_id"] == 7
+    assert record["chunks"] and "cached_chunks" in record

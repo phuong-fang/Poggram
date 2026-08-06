@@ -92,21 +92,15 @@ def register(app):
     def get_trash():
         folders = store.load_folders()
         files = store.load_files()
-        return jsonify({"folders": [f for f in folders if f["deleted"]], "files": [f for f in files if f["deleted"]]})
+        return jsonify({
+            "folders": [f for f in folders if f["deleted"]],
+            "files": [shared.file_list_record(f) for f in files if f["deleted"]],
+        })
 
     @app.route("/api/stats", methods=["GET"])
     def get_stats():
 
-        files = store.load_files()
-        total_current_bytes = sum(f["size_bytes"] for f in files)
-        total_all_versions_bytes = sum(v["size_bytes"] for f in files for v in f["versions"])
-        versioned_file_count = sum(1 for f in files if len(f["versions"]) > 1)
-        return jsonify({
-            "file_count": len(files),
-            "versioned_file_count": versioned_file_count,
-            "total_current_bytes": total_current_bytes,
-            "total_versioned_bytes": total_all_versions_bytes - total_current_bytes,
-        })
+        return jsonify(store.file_stats())
 
     @app.route("/api/cache/summary", methods=["GET"])
     def cache_summary_route():
