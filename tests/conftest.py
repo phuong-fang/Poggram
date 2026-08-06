@@ -29,3 +29,12 @@ def isolated_store(temp_data_dir, monkeypatch):
     monkeypatch.setattr(store, "DB_FILE", str(temp_data_dir / "vault.db"))
     monkeypatch.setattr(store, "_INIT_DONE", False)
     return store
+
+@pytest.fixture(autouse=True)
+def _reset_status_cache():
+
+    import telegram_client
+
+    telegram_client.invalidate_status_cache()
+    yield
+    telegram_client.invalidate_status_cache()

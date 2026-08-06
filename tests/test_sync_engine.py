@@ -279,3 +279,137 @@ def test_apply_change_releases_semaphore_when_dispatch_raises(monkeypatch, tmp_p
     semaphore = sync_engine._sync_transfer_semaphore()
     assert semaphore.acquire(blocking=False), "permit leaked on the re-upload path"
     semaphore.release()
+
+def test_folder_resolution_does_not_file_into_the_root_when_creation_fails(
+        isolated_store, monkeypatch, tmp_path):
+
+    root, _ = isolated_store.create_folder("SyncRoot", None)
+    sync_engine._vault_folder_cache.clear()
+
+    def _refuse(name, parent_id):
+        return None, "database is locked"
+
+    monkeypatch.setattr(store, "get_or_create_folder", _refuse)
+
+    result = sync_engine._get_or_create_vault_folder(
+        "photos/2026", {"folder_id": root["id"]}, "pair-1")
+
+    assert result is None, "a file would have been filed into the sync root"
+
+    assert not any(k[0] == "pair-1" and k[1] for k in sync_engine._vault_folder_cache), \
+        "a failed resolution was cached"
+
+def test_folder_resolution_reuses_a_differently_normalised_name(
+        isolated_store, monkeypatch, tmp_path):
+
+    import unicodedata
+
+    root, _ = isolated_store.create_folder("SyncRoot", None)
+    nfc = unicodedata.normalize("NFC", "Café")
+    nfd = unicodedata.normalize("NFD", "Café")
+    existing, err = isolated_store.get_or_create_folder(nfc, root["id"])
+    assert err is None
+
+    sync_engine._vault_folder_cache.clear()
+    resolved = sync_engine._get_or_create_vault_folder(
+        nfd, {"folder_id": root["id"]}, "pair-1")
+
+    assert resolved == existing["id"], "sync created a duplicate accented folder"
+
+def test_folder_resolution_creates_nested_structure(isolated_store, monkeypatch):
+    root, _ = isolated_store.create_folder("SyncRoot", None)
+    sync_engine._vault_folder_cache.clear()
+
+    resolved = sync_engine._get_or_create_vault_folder(
+        "a/b/c", {"folder_id": root["id"]}, "pair-1")
+
+    assert resolved is not None
+    folders = {f["id"]: f for f in isolated_store.load_folders()}
+    leaf = folders[resolved]
+    assert leaf["name"] == "c"
+    assert folders[leaf["parent_id"]]["name"] == "b"
+    assert folders[folders[leaf["parent_id"]]["parent_id"]]["name"] == "a"
+
+def test_renaming_a_synced_file_renames_it_in_the_vault(isolated_store, monkeypatch, tmp_path):
+
+    folder, _ = isolated_store.create_folder("SyncRoot", None)
+    record = isolated_store.create_file({
+        "name": "old-name.txt", "folder_id": folder["id"], "size_bytes": 5,
+        "mime_type": "text/plain", "telegram_chat_id": 1,
+        "chunks": [{"message_id": 1, "size_bytes": 5}], "source": "sync",
+    })
+    old_path = str(tmp_path / "old-name.txt")
+    new_path = str(tmp_path / "new-name.txt")
+    isolated_store.upsert_sync_record({
+        "local_path": old_path, "pair_id": "pair-1", "vault_file_id": record["id"],
+        "content_hash": "h", "size_bytes": 5, "mtime": 1.0, "local_inode": 1,
+        "status": "synced",
+    })
+
+    sync_engine._apply_rename(
+        {"inode": 1, "old_path": old_path, "new_path": new_path}, "pair-1")
+
+    assert isolated_store.find_sync_record(new_path, "pair-1") is not None, \
+        "the sync record did not follow the rename"
+    assert isolated_store.find_sync_record(old_path, "pair-1") is None, \
+        "the old sync record was left behind as an orphan"
+    assert isolated_store.find_file(record["id"])["name"] == "new-name.txt", \
+        "the vault copy kept its old name after a local rename"
+
+def test_a_move_that_keeps_the_name_leaves_the_vault_name_alone(isolated_store, tmp_path):
+
+    folder, _ = isolated_store.create_folder("SyncRoot", None)
+    record = isolated_store.create_file({
+        "name": "same.txt", "folder_id": folder["id"], "size_bytes": 5,
+        "mime_type": "text/plain", "telegram_chat_id": 1,
+        "chunks": [{"message_id": 1, "size_bytes": 5}], "source": "sync",
+    })
+    old_path = str(tmp_path / "a" / "same.txt")
+    new_path = str(tmp_path / "b" / "same.txt")
+    isolated_store.upsert_sync_record({
+        "local_path": old_path, "pair_id": "pair-1", "vault_file_id": record["id"],
+        "content_hash": "h", "size_bytes": 5, "mtime": 1.0, "local_inode": 1,
+        "status": "synced",
+    })
+
+    sync_engine._apply_rename(
+        {"inode": 1, "old_path": old_path, "new_path": new_path}, "pair-1")
+
+    assert isolated_store.find_sync_record(new_path, "pair-1") is not None
+    assert isolated_store.find_file(record["id"])["name"] == "same.txt"
+
+def test_renaming_an_untracked_path_is_a_no_op(isolated_store, tmp_path):
+    sync_engine._apply_rename(
+        {"inode": 1, "old_path": str(tmp_path / "never-seen.txt"),
+         "new_path": str(tmp_path / "whatever.txt")}, "pair-1")
+    assert isolated_store.load_sync_state() == {}
+
+def test_a_rename_through_a_full_cycle_does_not_re_upload(isolated_store, monkeypatch, tmp_path):
+
+    folder, _ = isolated_store.create_folder("SyncRoot", None)
+    record = isolated_store.create_file({
+        "name": "before.txt", "folder_id": folder["id"], "size_bytes": 4,
+        "mime_type": "text/plain", "telegram_chat_id": 1,
+        "chunks": [{"message_id": 1, "size_bytes": 4}], "source": "sync",
+    })
+    old_path = str(tmp_path / "before.txt")
+    new_path = str(tmp_path / "after.txt")
+    (tmp_path / "after.txt").write_bytes(b"data")
+    isolated_store.upsert_sync_record({
+        "local_path": old_path, "pair_id": "pair-1", "vault_file_id": record["id"],
+        "content_hash": "h", "size_bytes": 4, "mtime": 1.0, "local_inode": 7,
+        "status": "synced",
+    })
+
+    uploads = []
+    monkeypatch.setattr(sync_engine, "_start_upload_fn",
+                        lambda *a, **k: uploads.append(a), raising=False)
+
+    deltas = {"renames": [{"inode": 7, "old_path": old_path, "new_path": new_path}],
+              "changes": [], "additions": []}
+    sync_engine._execute_deltas(deltas, "pair-1", {"folder_id": folder["id"]},
+                                root_local_path=str(tmp_path))
+
+    assert uploads == [], "a rename triggered a re-upload"
+    assert isolated_store.find_file(record["id"])["name"] == "after.txt"
+    assert isolated_store.find_sync_record(new_path, "pair-1")["vault_file_id"] == record["id"]

@@ -70,6 +70,40 @@ _client = None
 
 _client_authorized = False
 
+_pending_client = None
+
+_STATUS_CACHE_TTL_SECONDS = 10.0
+_status_cache_value = None
+_status_cache_at = 0.0
+_status_cache_lock = threading.Lock()
+
+def _status_cache_get():
+
+    with _status_cache_lock:
+        if _status_cache_value is None:
+            return None
+        if (time.monotonic() - _status_cache_at) >= _STATUS_CACHE_TTL_SECONDS:
+            return None
+        return _status_cache_value
+
+def _status_cache_last():
+
+    with _status_cache_lock:
+        return _status_cache_value
+
+def _status_cache_put(connected):
+    global _status_cache_value, _status_cache_at
+    with _status_cache_lock:
+        _status_cache_value = connected
+        _status_cache_at = time.monotonic()
+
+def invalidate_status_cache():
+
+    global _status_cache_value, _status_cache_at
+    with _status_cache_lock:
+        _status_cache_value = None
+        _status_cache_at = 0.0
+
 _client_init_lock = threading.Lock()
 
 _telethon_lock = None
@@ -301,10 +335,18 @@ def status():
                     return False
             return await client.is_user_authorized()
 
-        try:
-            connected = _run_coro_retry_on_lock(_check, timeout=15)
-        except Exception:
-            connected = False
+        cached = _status_cache_get()
+        if cached is not None:
+            connected = cached
+        else:
+            try:
+                connected = _run_coro_retry_on_lock(_check, timeout=15)
+                _status_cache_put(connected)
+            except Exception:
+
+                last = _status_cache_last()
+                connected = last if last is not None else False
+                logger.debug("Status check failed - reusing last known connected=%s", connected)
 
         _client_authorized = connected
         if connected:
@@ -320,30 +362,44 @@ def status():
     }
 
 def connect(api_id, api_hash, phone_number):
-    global _client, _pending_phone, _pending_phone_code_hash
+
+    global _client, _pending_client, _pending_phone, _pending_phone_code_hash
     try:
         api_id = int(api_id)
     except (TypeError, ValueError):
         raise ValueError("API ID should be a number - check my.telegram.org and try again.")
 
     store.save_settings_fields({"api_id": api_id, "api_hash": api_hash, "phone_number": phone_number})
-    _client = TelegramClient(
-        _load_client_session(), api_id, api_hash, loop=_loop, flood_sleep_threshold=FLOOD_SLEEP_THRESHOLD
-    )
-    _raise_session_busy_timeout(_client)
+    with _client_init_lock:
+        replaced = _client
+        _client = TelegramClient(
+            _load_client_session(), api_id, api_hash, loop=_loop, flood_sleep_threshold=FLOOD_SLEEP_THRESHOLD
+        )
+        _raise_session_busy_timeout(_client)
+        _pending_client = _client
+        client = _client
+
+    if replaced is not None and replaced is not client:
+        try:
+            run_coro(replaced.disconnect(), timeout=10)
+        except Exception:
+            logger.debug("Couldn't disconnect the replaced client", exc_info=True)
 
     async def _do():
-        await _client.connect()
-        result = await _client.send_code_request(phone_number)
+        await client.connect()
+        result = await client.send_code_request(phone_number)
         return result.phone_code_hash
 
     _pending_phone_code_hash = run_coro(_do())
     _pending_phone = phone_number
 
 def submit_code(code):
+
+    client = _pending_client or _client
+
     async def _do():
         try:
-            await _client.sign_in(_pending_phone, code, phone_code_hash=_pending_phone_code_hash)
+            await client.sign_in(_pending_phone, code, phone_code_hash=_pending_phone_code_hash)
             return "connected"
         except SessionPasswordNeededError:
             return "password"
@@ -358,8 +414,10 @@ def submit_code(code):
     return step
 
 def submit_password(password):
+    client = _pending_client or _client
+
     async def _do():
-        await _client.sign_in(password=password)
+        await client.sign_in(password=password)
 
     run_coro(_do())
     _finish_auth()
@@ -385,7 +443,7 @@ def refresh_premium_status():
 
 def logout():
 
-    global _client, _client_authorized
+    global _client, _client_authorized, _pending_client
     if _client is not None:
         async def _do_logout():
             try:
@@ -404,6 +462,9 @@ def logout():
         _client = None
 
     _client_authorized = False
+    _pending_client = None
+
+    invalidate_status_cache()
     credential_store.clear_session()
     store.save_settings_fields({
         "archive_chat_id": None,
@@ -414,17 +475,23 @@ def logout():
 
 def _finish_auth():
 
+    global _client_authorized, _pending_client
+
+    client = _pending_client or _client
+
     async def _do():
-        me = await _client.get_me()
+        me = await client.get_me()
         return bool(getattr(me, "premium", False))
 
-    global _client_authorized
     is_premium = run_coro(_do())
     max_chunk = 3_900_000_000 if is_premium else 1_900_000_000
     store.save_settings_fields({"is_premium": is_premium, "max_chunk_size_bytes": max_chunk})
 
     _client_authorized = True
-    _persist_client_session(_client)
+    invalidate_status_cache()
+    _persist_client_session(client)
+
+    _pending_client = None
 
 def scan_archive_candidates():
 
@@ -486,6 +553,17 @@ def _require_client():
             except Exception as e:
                 raise ValueError(f"Telegram connection failed: {e}")
         if not await client.is_user_authorized():
+
+            global _client_authorized
+            _client_authorized = False
+
+            invalidate_status_cache()
+            settings = store.load_settings()
+            if settings.get("api_id") and settings.get("phone_number"):
+                raise ValueError(
+                    "Your Telegram session is no longer valid - it may have expired or been "
+                    "signed out from another device. Reconnect in Settings."
+                )
             raise ValueError("Telegram isn't connected yet - set it up in Settings first.")
 
     _run_coro_retry_on_lock(lambda: _ensure(), timeout=60)
@@ -1215,16 +1293,42 @@ APP_DATA_TOPIC_TITLE = "App Data (Telegram Vault)"
 
 MEDIA_TOPIC_TITLE = "Media (Images & Video)"
 
+_forum_cache_value = None
+_forum_cache_chat = None
+_forum_cache_at = 0.0
+_forum_cache_lock = threading.Lock()
+
+_FORUM_CACHE_TTL_SECONDS = 300.0
+
+def invalidate_forum_cache():
+    global _forum_cache_value, _forum_cache_chat, _forum_cache_at
+    with _forum_cache_lock:
+        _forum_cache_value = None
+        _forum_cache_chat = None
+        _forum_cache_at = 0.0
+
 def is_forum_enabled():
 
-    client = _require_client()
+    global _forum_cache_value, _forum_cache_chat, _forum_cache_at
     chat_id = require_archive_chat()
+    with _forum_cache_lock:
+        if (_forum_cache_value is not None
+                and _forum_cache_chat == chat_id
+                and (time.monotonic() - _forum_cache_at) < _FORUM_CACHE_TTL_SECONDS):
+            return _forum_cache_value
+
+    client = _require_client()
 
     async def _do():
         entity = await client.get_entity(chat_id)
         return bool(getattr(entity, "forum", False))
 
-    return _run_coro_retry_on_lock(_do, timeout=30)
+    enabled = _run_coro_retry_on_lock(_do, timeout=30)
+    with _forum_cache_lock:
+        _forum_cache_value = enabled
+        _forum_cache_chat = chat_id
+        _forum_cache_at = time.monotonic()
+    return enabled
 
 def check_archive_identity():
 
@@ -1268,6 +1372,8 @@ def set_forum_mode(enabled):
         await client(ToggleForumRequest(channel=entity, enabled=enabled, tabs=False))
 
     _run_coro_retry_on_lock(_do, timeout=30)
+
+    invalidate_forum_cache()
 
 async def _get_topic_id_by_title(client, entity, title):
 

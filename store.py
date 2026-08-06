@@ -545,28 +545,30 @@ def _migrate_file_record(f: dict) -> dict:
         f["meta_message_id"] = None
     return f
 
+_FILE_COLUMNS = """id, name, folder_id, size_bytes, mime_type, telegram_chat_id,
+                   chunks_json, cached_chunks_json, date_uploaded, date_modified,
+                   deleted, date_deleted, source, original_name, meta_message_id,
+                   starred_at, last_opened_at, versions_json, current_version, content_hash"""
+
+def _file_row_to_record(row):
+
+    f = _row_to_dict(row)
+    f["chunks"] = _json_loads(f.pop("chunks_json"))
+    f["cached_chunks"] = _json_loads(f.pop("cached_chunks_json"))
+    f["versions"] = _json_loads(f.pop("versions_json"))
+    f["deleted"] = bool(f["deleted"])
+    return _migrate_file_record(f)
+
 def load_files() -> List[dict]:
     _init_db()
     with _DB_LOCK:
         conn = _get_conn()
         try:
-            rows = conn.execute("""
-                SELECT id, name, folder_id, size_bytes, mime_type, telegram_chat_id,
-                       chunks_json, cached_chunks_json, date_uploaded, date_modified,
-                       deleted, date_deleted, source, original_name, meta_message_id,
-                       starred_at, last_opened_at, versions_json, current_version, content_hash
+            rows = conn.execute(f"""
+                SELECT {_FILE_COLUMNS}
                 FROM files ORDER BY date_uploaded DESC
             """).fetchall()
-            files = []
-            for r in rows:
-                f = _row_to_dict(r)
-                f["chunks"] = _json_loads(f.pop("chunks_json"))
-                f["cached_chunks"] = _json_loads(f.pop("cached_chunks_json"))
-                f["versions"] = _json_loads(f.pop("versions_json"))
-                f["deleted"] = bool(f["deleted"])
-                f = _migrate_file_record(f)
-                files.append(f)
-            return files
+            return [_file_row_to_record(r) for r in rows]
         finally:
             conn.close()
 
@@ -624,7 +626,17 @@ def _sync_current_version_mirror(file: dict):
     file["cached_chunks"] = version["cached_chunks"]
 
 def find_file(file_id: str):
-    return next((f for f in load_files() if f["id"] == file_id), None)
+
+    _init_db()
+    with _DB_LOCK:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                f"SELECT {_FILE_COLUMNS} FROM files WHERE id = ?", (file_id,)
+            ).fetchone()
+            return _file_row_to_record(row) if row is not None else None
+        finally:
+            conn.close()
 
 def create_file(fields: dict):
     files = load_files()
@@ -684,15 +696,24 @@ def add_file_version(file_id: str, fields: dict):
     return file, None
 
 def find_duplicate_by_hash(content_hash: str):
+
     if content_hash is None:
         return None
-    for file in load_files():
-        if file["deleted"]:
-            continue
-        version = file["versions"][file["current_version"]]
-        if version.get("content_hash") == content_hash:
-            return file
-    return None
+    _init_db()
+    with _DB_LOCK:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                f"""SELECT {_FILE_COLUMNS} FROM files
+                    WHERE deleted = 0
+                      AND json_extract(versions_json,
+                                       '$[' || current_version || '].content_hash') = ?
+                    ORDER BY date_uploaded DESC LIMIT 1""",
+                (content_hash,),
+            ).fetchone()
+            return _file_row_to_record(row) if row is not None else None
+        finally:
+            conn.close()
 
 def restore_file_version(file_id: str, version_index: int):
     files = load_files()
@@ -1247,7 +1268,8 @@ def rename_sync_record(old_path, new_path):
                 (old_path,)
             ).fetchall()
             if not rows:
-                return
+                return None
+            updated = None
             for row in rows:
                 key = row["key"]
                 value = json.loads(row["value_json"])
@@ -1258,7 +1280,10 @@ def rename_sync_record(old_path, new_path):
                     "INSERT INTO sync_state (key, value_json) VALUES (?, ?)",
                     (new_key, json.dumps(value))
                 )
+                if updated is None:
+                    updated = value
             conn.commit()
+            return updated
         finally:
             conn.close()
 
@@ -1489,3 +1514,30 @@ def delete_completed_upload(upload_id: str):
         finally:
             conn.close()
 
+def file_stats():
+
+    _init_db()
+    with _DB_LOCK:
+        conn = _get_conn()
+        try:
+            file_count, total_current = conn.execute(
+                "SELECT COUNT(*), COALESCE(SUM(size_bytes), 0) FROM files"
+            ).fetchone()
+            total_all_versions = conn.execute("""
+                SELECT COALESCE(SUM(json_extract(v.value, '$.size_bytes')), 0)
+                FROM files, json_each(files.versions_json) AS v
+                WHERE files.versions_json IS NOT NULL
+            """).fetchone()[0]
+            versioned_file_count = conn.execute("""
+                SELECT COUNT(*) FROM files
+                WHERE versions_json IS NOT NULL
+                  AND json_array_length(versions_json) > 1
+            """).fetchone()[0]
+            return {
+                "file_count": file_count,
+                "versioned_file_count": versioned_file_count,
+                "total_current_bytes": total_current,
+                "total_versioned_bytes": (total_all_versions or 0) - total_current,
+            }
+        finally:
+            conn.close()

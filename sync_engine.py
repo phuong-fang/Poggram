@@ -512,23 +512,15 @@ def _get_or_create_vault_folder(relative_dir, pair_config, pair_id):
                     current_parent_id = _vault_folder_cache[sub_cache_key]
                     continue
 
-            folders = store.load_folders()
-            existing = next((f for f in folders
-                            if f.get("parent_id") == current_parent_id
-                            and f["name"] == part
-                            and not f.get("deleted", False)), None)
+            new_folder, error = store.get_or_create_folder(part, current_parent_id)
+            if error or not new_folder:
 
-            if existing:
-                current_parent_id = existing["id"]
-            else:
-
-                new_folder, error = store.create_folder(part, current_parent_id)
-                if error or not new_folder:
-                    logger.warning(f"Failed to create Vault folder '{part}' under {current_parent_id}: {error}, falling back to root folder {root_folder_id}")
-
-                    current_parent_id = root_folder_id
-                else:
-                    current_parent_id = new_folder["id"]
+                logger.warning(
+                    "Sync: couldn't create Vault folder %r under %s (%s) - skipping "
+                    "this file, it will be retried next cycle rather than filed "
+                    "in the sync root", part, current_parent_id, error)
+                return None
+            current_parent_id = new_folder["id"]
 
             with _vault_folder_cache_guard:
                 _vault_folder_cache[sub_cache_key] = current_parent_id

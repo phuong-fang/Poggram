@@ -638,3 +638,9 @@ def detect_video_player():
         if os.path.isfile(path):
             return path
     return None
+
+LIST_OMITTED_FILE_FIELDS = ("chunks", "cached_chunks", "versions")
+
+def file_list_record(f):
+
+    return {k: v for k, v in f.items() if k not in LIST_OMITTED_FILE_FIELDS}

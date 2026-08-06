@@ -11,7 +11,8 @@ import thumbnails
 def register(app):
     @app.route("/api/files", methods=["GET"])
     def list_files():
-        return jsonify([f for f in store.load_files() if not f["deleted"]])
+        return jsonify([shared.file_list_record(f)
+                        for f in store.load_files() if not f["deleted"]])
 
     @app.route("/api/files", methods=["POST"])
     def create_file_route():
