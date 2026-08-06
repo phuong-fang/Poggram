@@ -15,7 +15,7 @@ Virtual folders, live search, streaming playback and drag-and-drop.
 ## What it is
 
 Your files live in Telegram, as messages in a supergroup.
-Poggram is the local index and a frontend to manage them: folder tree,
+Poggram is the local index and interface to manage them: folder tree,
 search, thumbnails, files versioning and Trash.
 
 The app talks to Telegram directly as your own account, and the index lives in a local SQLite database beside it.
