@@ -4,11 +4,9 @@
 
 # Poggram
 
-**A desktop file explorer whose storage is a private Telegram channel.**
+**A file explorer for Telegram.**
 
-Virtual folders, live search, streaming playback and drag-and-drop — over an
-archive supergroup the app creates for itself and is the only thing that
-writes to.
+Virtual folders, live search, streaming playback and drag-and-drop.
 
 </div>
 
@@ -16,20 +14,17 @@ writes to.
 
 ## What it is
 
-Your files physically live in Telegram, as messages in a private supergroup.
-Poggram is the local index and UI that makes them findable: a folder tree,
-search, thumbnails, versioning and a Trash — none of which Telegram itself
-offers over a chat.
+Your files live in Telegram, as messages in a supergroup.
+Poggram is the local index and a frontend to manage them: folder tree,
+search, thumbnails, files versioning and Trash.
 
-Nothing is stored on a third-party server. The app talks to Telegram directly
-as your own account, and the index lives in a local SQLite database beside it.
+The app talks to Telegram directly as your own account, and the index lives in a local SQLite database beside it.
 
 ## Features
 
 - **File-explorer UI** — folder tree, breadcrumbs, grid and list views,
   multi-select, context menus, drag-and-drop upload, Trash with restore.
-- **Streaming, not downloading** — video/audio play with range requests
-  served from Telegram.
+- **Streaming** — video/audio play with range requests served from Telegram.
 - **Large upload/download** — Large file get split to multiple chunk at upload. 16GB file can be split to 8 smaller 2GB files (Or 4 smaller 4GB files with premium). Download simply merge the file back to it original state.
 - **Search** — scoped to the open folder and its subfolders, search in realtime without slowdown.
 - **Versioning** — upload over an existing file and keep its history.
@@ -94,15 +89,12 @@ Open **Settings** in the app, then:
 ### 4. Create the archive
 
 Still in Settings, press **Create supergroup**. Poggram makes a private
-Telegram group that it owns and is the only thing that writes to — this is
-where your files physically live.
+Telegram group that it writes to — this is where your files live.
 
 That is the whole setup. Drag files or folders into the window to upload;
 double-click to open, stream or download them.
 
-> **Note:** everything is stored in your own Telegram account, under your own
-> storage. Poggram runs entirely on your machine and there is no server in
-> between.
+> **Note:** everything is stored in your own Telegram account. Poggram runs entirely on your machine and there is no server in between.
 
 ## Telegram's terms apply
 
