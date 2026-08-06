@@ -3,6 +3,7 @@ import time
 
 import pytest
 
+import store
 import sync_engine
 from tests.conftest import isolated_store
 
@@ -211,3 +212,70 @@ def test_start_background_upload_accepts_on_duplicate():
 
     params = inspect.signature(shared.start_background_upload).parameters
     assert "on_duplicate" in params
+
+def _dispatch_harness(monkeypatch, tmp_path, exc):
+
+    source = tmp_path / "leaky.bin"
+    source.write_bytes(b"x" * 32)
+
+    monkeypatch.setattr(store, "find_sync_pair",
+                        lambda pair_id: {"id": pair_id, "paused": False})
+    monkeypatch.setattr(store, "load_settings", lambda: {"max_parallel_transfers": 1})
+    monkeypatch.setattr(store, "load_folders", lambda: [{"id": "folder-1"}])
+    monkeypatch.setattr(store, "find_sync_record", lambda *a, **k: None)
+    monkeypatch.setattr(sync_engine, "_get_or_create_vault_folder",
+                        lambda *a, **k: "folder-1")
+
+    def _boom(*a, **k):
+        raise exc
+
+    monkeypatch.setattr(sync_engine, "_start_upload_fn", _boom, raising=False)
+
+    monkeypatch.setattr(sync_engine, "_transfer_semaphore", None, raising=False)
+    monkeypatch.setattr(sync_engine, "_transfer_semaphore_size", None, raising=False)
+    return str(source)
+
+@pytest.mark.parametrize("exc", [
+    RuntimeError("telethon blew up"),
+    __import__("sqlite3").OperationalError("database is locked"),
+])
+def test_queue_upload_releases_semaphore_when_dispatch_raises(monkeypatch, tmp_path, exc):
+    path = _dispatch_harness(monkeypatch, tmp_path, exc)
+
+    sync_engine._queue_upload(path, "pair-1", {"folder_id": "folder-1"}, str(tmp_path))
+
+    semaphore = sync_engine._sync_transfer_semaphore()
+    assert semaphore.acquire(blocking=False), (
+        "the permit was never given back - after max_parallel_transfers of "
+        "these the sync dispatch loop blocks forever"
+    )
+    semaphore.release()
+    assert sync_engine._path_lock(path).acquire(blocking=False), (
+        "the path lock was never released - this file can never sync again"
+    )
+    sync_engine._path_lock(path).release()
+
+def test_queue_upload_clears_in_flight_when_dispatch_raises(monkeypatch, tmp_path):
+
+    path = _dispatch_harness(monkeypatch, tmp_path, RuntimeError("boom"))
+
+    sync_engine._queue_upload(path, "pair-1", {"folder_id": "folder-1"}, str(tmp_path))
+
+    in_flight = sync_engine._in_flight_paths.get("pair-1") or set()
+    assert path not in in_flight
+
+def test_apply_change_releases_semaphore_when_dispatch_raises(monkeypatch, tmp_path):
+
+    path = _dispatch_harness(monkeypatch, tmp_path, RuntimeError("boom"))
+    monkeypatch.setattr(store, "find_sync_record",
+                        lambda *a, **k: {"local_path": path, "vault_file_id": "vault-1",
+                                         "pair_id": "pair-1", "content_hash": "old"})
+
+    sync_engine._apply_change(
+        {"path": path, "content_hash": "new", "size_bytes": 32, "mtime": 1, "inode": 1},
+        "pair-1", {"folder_id": "folder-1", "reupload_mode": "version"},
+        root_local_path=str(tmp_path))
+
+    semaphore = sync_engine._sync_transfer_semaphore()
+    assert semaphore.acquire(blocking=False), "permit leaked on the re-upload path"
+    semaphore.release()

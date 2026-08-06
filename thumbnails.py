@@ -12,6 +12,8 @@ _AVIF_QUALITY = 65
 
 _FFMPEG_TIMEOUT_SECONDS = 45
 
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 _VALID_SUBSAMPLING = ("4:4:4", "4:2:2", "4:2:0")
 
 def _resize_to_thumbnail(source, fmt="jpeg", quality=None, subsampling=None):
@@ -49,7 +51,8 @@ def _extract_video_frame(source_path, seek_seconds=_VIDEO_FRAME_SEEK_SECONDS):
     def _run(args):
         try:
 
-            result = subprocess.run(args, capture_output=True, timeout=_FFMPEG_TIMEOUT_SECONDS)
+            result = subprocess.run(args, capture_output=True, timeout=_FFMPEG_TIMEOUT_SECONDS,
+                                    creationflags=_NO_WINDOW)
             return result.stdout if result.returncode == 0 and result.stdout else None
         except Exception:
             return None
@@ -79,6 +82,7 @@ def probe_media_info(source):
         result = subprocess.run(
             ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", source],
             capture_output=True, timeout=_FFMPEG_TIMEOUT_SECONDS,
+            creationflags=_NO_WINDOW,
         )
         if result.returncode != 0 or not result.stdout:
             return None

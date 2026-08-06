@@ -218,7 +218,7 @@ async function apiFetch(url, options = {}) {
 function foldersByParent(parentId) {
   return folders
     .filter((f) => f.parent_id === parentId)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => compareNames(a.name, b.name));
 }
 
 function findFolder(id) {
@@ -249,7 +249,7 @@ function folderPath(folderId) {
 }
 
 function filesByFolder(folderId) {
-  return files.filter((f) => f.folder_id === folderId).sort((a, b) => a.name.localeCompare(b.name));
+  return files.filter((f) => f.folder_id === folderId).sort((a, b) => compareNames(a.name, b.name));
 }
 
 function findFile(id) {
@@ -301,8 +301,18 @@ function totalSizeSuffix(fileList) {
   return ` · ${formatBytes(totalBytes)}`;
 }
 
+function foldName(value) {
+  return String(value ?? "").normalize("NFC").toLowerCase();
+}
+
+function compareNames(a, b) {
+  return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true });
+}
+
 function formatDuration(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "";
+
+  if (seconds > 48 * 3600) return "";
   const total = Math.round(seconds);
   if (total < 60) return `${total}s`;
   const minutes = Math.floor(total / 60);
@@ -313,30 +323,84 @@ function formatDuration(seconds) {
   return `${hours}h ${mins}m`;
 }
 
-function formatSpeedAndEta(bytesDoneThisAttempt, bytesTotal, bytesDoneAtAttemptStart, startTime, prevBytesDone, prevTime) {
+const _RATE_WINDOW_MS = 8000;
+const _RATE_MIN_SAMPLE_MS = 500;
+const _RATE_STEP_JUMP_FACTOR = 4;
+
+const _RATE_STALL_SAMPLES = 4;
+const _rateSamples = new Map();
+
+function resetRate(key) {
+  _rateSamples.delete(key);
+}
+
+function _newRateState(bytesDone, now) {
+
+  return { lastBytes: bytesDone, offset: 0, rate: 0, stalledFor: 0,
+           points: [{ t: now, b: 0 }] };
+}
+
+function rebaselineRate(key, bytesDone) {
+  const s = _rateSamples.get(key);
+  if (!s) {
+    _rateSamples.set(key, _newRateState(bytesDone, Date.now()));
+    return;
+  }
+  s.offset += bytesDone - s.lastBytes;
+  s.lastBytes = bytesDone;
+}
+
+function smoothedRate(key, bytesDone) {
   const now = Date.now();
-  const elapsedSeconds = (now - startTime) / 1000;
-  const bytesThisAttempt = bytesDoneThisAttempt - bytesDoneAtAttemptStart;
-  if (elapsedSeconds < 1 || bytesThisAttempt <= 0) return "";
+  let s = _rateSamples.get(key);
+  if (!s || bytesDone < s.lastBytes) {
 
-  let bytesPerSecond = 0;
-  if (prevBytesDone != null && prevTime != null) {
-    const deltaSeconds = (now - prevTime) / 1000;
-    const deltaBytes = bytesDoneThisAttempt - prevBytesDone;
-    if (deltaSeconds > 0 && deltaBytes > 0) {
-      bytesPerSecond = deltaBytes / deltaSeconds;
-    }
+    s = _newRateState(bytesDone, now);
+    _rateSamples.set(key, s);
+    return 0;
+  }
+  const newest = s.points[s.points.length - 1];
+  const gap = (now - newest.t) / 1000;
+  if (gap * 1000 < _RATE_MIN_SAMPLE_MS) return s.rate;
+
+  const delta = bytesDone - s.lastBytes;
+  if (delta === 0) {
+
+    s.stalledFor += 1;
+    return s.stalledFor > _RATE_STALL_SAMPLES ? 0 : s.rate;
+  }
+  if (s.rate > 0 && delta / gap > s.rate * _RATE_STEP_JUMP_FACTOR) {
+
+    s.offset += delta;
+    s.lastBytes = bytesDone;
+    return s.rate;
   }
 
-  if (!(bytesPerSecond > 0)) {
-    bytesPerSecond = bytesThisAttempt / elapsedSeconds;
-  }
+  s.stalledFor = 0;
+  s.lastBytes = bytesDone;
+  s.points.push({ t: now, b: bytesDone - s.offset });
 
-  if (!(bytesPerSecond > 0)) return "";
-  if (bytesTotal == null) return `${formatBytes(bytesPerSecond)}/s`;
-  const etaSeconds = (bytesTotal - bytesDoneThisAttempt) / bytesPerSecond;
-  const etaText = formatDuration(etaSeconds);
-  return etaText ? `${formatBytes(bytesPerSecond)}/s · ${etaText} left` : `${formatBytes(bytesPerSecond)}/s`;
+  while (s.points.length > 2 && now - s.points[0].t > _RATE_WINDOW_MS) s.points.shift();
+  const oldest = s.points[0];
+  const span = (now - oldest.t) / 1000;
+  if (span <= 0) return s.rate;
+  s.rate = (bytesDone - s.offset - oldest.b) / span;
+  return s.rate;
+}
+
+function formatSpeedAndEta(key, bytesDone, bytesTotal) {
+  const rate = smoothedRate(key, bytesDone);
+  if (!(rate > 0)) return "";
+  if (bytesTotal == null) return `${formatBytes(rate)}/s`;
+  const etaText = formatDuration((bytesTotal - bytesDone) / rate);
+  return etaText ? `${formatBytes(rate)}/s · ${etaText} left` : `${formatBytes(rate)}/s`;
+}
+
+let _rateKeySeq = 0;
+
+function rowRateKey(row) {
+  if (!row._rateKey) row._rateKey = `row-${++_rateKeySeq}`;
+  return row._rateKey;
 }
 
 function formatDate(isoString) {
@@ -465,33 +529,30 @@ function fileCardHtml(f, { showFolderPath = false, draggable = true } = {}) {
   return `
     <div class="card file-card${selected ? " selected" : ""}${hasThumbClass}" data-id="${f.id}"${draggable ? ' draggable="true"' : ""}>
       ${f.starred_at ? `<i data-lucide="star" class="card-star"></i>` : ""}
-
       ${fileThumbHtml(f)}
       <div class="card-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
-
       ${sub}
       <div class="card-modified">${escapeHtml(formatDate(f.date_modified))}</div>
-
     </div>
-
   `;
 }
 
 function renderSearchResults() {
-  const query = searchQuery.toLowerCase();
+  const query = foldName(searchQuery);
+
   const scopeIds = new Set([currentFolderId, ...collectDescendantIds(currentFolderId)]);
-  let matches = files.filter((f) => scopeIds.has(f.folder_id) && f.name.toLowerCase().includes(query));
-  matches = matches.sort(_sortColumn ? _sortComparator() : (a, b) => a.name.localeCompare(b.name));
+  let matches = files.filter((f) => scopeIds.has(f.folder_id) && foldName(f.name).includes(query));
+  matches = matches.sort(_sortColumn ? _sortComparator() : (a, b) => compareNames(a.name, b.name));
   const scopeLabel = currentFolderId ? ` in ${findFolder(currentFolderId)?.name ?? "this folder"}` : "";
   _explorerBaseCountText =
     `${matches.length} match${matches.length === 1 ? "" : "es"} for "${searchQuery}"${scopeLabel}` +
     totalSizeSuffix(matches) +
     capHintSuffix(matches.length, "matches");
   setItemCount(appendSelectionSummary(_explorerBaseCountText, selectedFolderIds, selectedFileIds, files));
+
   knownThumbnailIds.clear();
   if (matches.length === 0) {
     gridEl.innerHTML = `<div class="empty-hint">No files match "${escapeHtml(searchQuery)}".</div>`;
-
     return;
   }
 
@@ -677,11 +738,11 @@ function _sortComparator() {
   const dir = _sortDir;
   return (a, b) => {
     let va, vb;
-    if (_sortColumn === "name") { va = a.name.toLowerCase(); vb = b.name.toLowerCase(); return va < vb ? -dir : va > vb ? dir : 0; }
+    if (_sortColumn === "name") return compareNames(a.name, b.name) * dir;
     if (_sortColumn === "size") {
       va = _sizeOf(a); vb = _sizeOf(b);
 
-      if (va === vb) return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : a.name.toLowerCase() > b.name.toLowerCase() ? 1 : 0;
+      if (va === vb) return compareNames(a.name, b.name);
       return (va - vb) * dir;
     }
     if (_sortColumn === "modified") { va = a.date_modified || ""; vb = b.date_modified || ""; return va < vb ? -dir : va > vb ? dir : 0; }
@@ -808,8 +869,8 @@ function renderSmartView(kind) {
 
   let matches = files.filter(config.filter).sort(_sortColumn ? _sortComparator() : config.sort);
   if (smartSearchQuery) {
-    const query = smartSearchQuery.toLowerCase();
-    matches = matches.filter((f) => f.name.toLowerCase().includes(query));
+    const query = foldName(smartSearchQuery);
+    matches = matches.filter((f) => foldName(f.name).includes(query));
   }
   smartTitleEl.textContent = config.title;
   smartLedeEl.textContent = config.lede;
@@ -1090,12 +1151,12 @@ function applySelectionClasses() {
 
 function currentGridItems() {
   if (searchQuery) {
-    const query = searchQuery.toLowerCase();
+    const query = foldName(searchQuery);
 
     const scopeIds = new Set([currentFolderId, ...collectDescendantIds(currentFolderId)]);
     return files
-      .filter((f) => scopeIds.has(f.folder_id) && f.name.toLowerCase().includes(query))
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter((f) => scopeIds.has(f.folder_id) && foldName(f.name).includes(query))
+      .sort((a, b) => compareNames(a.name, b.name))
       .slice(0, RESULT_RENDER_CAP)
       .map((f) => ({ type: "file", id: f.id }));
   }
@@ -1164,9 +1225,9 @@ function applyTrashSelectionClasses() {
 function currentTrashItems() {
   let folders, files;
   if (trashSearchQuery) {
-    const query = trashSearchQuery.toLowerCase();
-    folders = trashFoldersCache.filter((f) => f.name.toLowerCase().includes(query));
-    files = trashFilesCache.filter((f) => f.name.toLowerCase().includes(query));
+    const query = foldName(trashSearchQuery);
+    folders = trashFoldersCache.filter((f) => foldName(f.name).includes(query));
+    files = trashFilesCache.filter((f) => foldName(f.name).includes(query));
   } else {
     folders = trashFoldersByParent(currentTrashFolderId);
     files = trashFilesByFolder(currentTrashFolderId);
@@ -1240,8 +1301,8 @@ function currentSmartItems() {
   const config = SMART_VIEWS[currentSmartView];
   let matches = files.filter(config.filter).sort(_sortColumn ? _sortComparator() : config.sort);
   if (smartSearchQuery) {
-    const query = smartSearchQuery.toLowerCase();
-    matches = matches.filter((f) => f.name.toLowerCase().includes(query));
+    const query = foldName(smartSearchQuery);
+    matches = matches.filter((f) => foldName(f.name).includes(query));
   }
   if (matches.length > RESULT_RENDER_CAP) matches = matches.slice(0, RESULT_RENDER_CAP);
   return matches.map((f) => ({ type: "file", id: f.id }));
@@ -2710,7 +2771,7 @@ document.addEventListener("drop", (e) => {
 });
 
 function applyTransfersSearchFilter() {
-  const query = transfersSearchQuery.trim().toLowerCase();
+  const query = foldName(transfersSearchQuery.trim());
   uploadListEl.querySelectorAll(":scope > .upload-row").forEach((row) => {
     if (row.classList.contains("upload-folder")) {
       const childrenContainer = row.nextElementSibling?.classList.contains("upload-folder-children")
@@ -2720,19 +2781,19 @@ function applyTransfersSearchFilter() {
       let anyChildMatch = false;
       children.forEach((child) => {
         const name = child.querySelector(".upload-name")?.textContent || "";
-        const match = !query || name.toLowerCase().includes(query);
+        const match = !query || foldName(name).includes(query);
         child.classList.toggle("search-hidden", !match);
         if (match) anyChildMatch = true;
       });
       const folderName = row.querySelector(".upload-name")?.textContent || "";
-      const folderMatch = !query || folderName.toLowerCase().includes(query);
+      const folderMatch = !query || foldName(folderName).includes(query);
       row.classList.toggle("search-hidden", !(folderMatch || anyChildMatch));
       if (folderMatch && !anyChildMatch) {
         children.forEach((child) => child.classList.remove("search-hidden"));
       }
     } else {
       const name = row.querySelector(".upload-name")?.textContent || "";
-      const match = !query || name.toLowerCase().includes(query);
+      const match = !query || foldName(name).includes(query);
       row.classList.toggle("search-hidden", !match);
     }
   });
@@ -2873,7 +2934,11 @@ function updateTransfersSummary() {
 
   if (activeTransfers === 0 && queuedTransfers === 0 && pausedTransfers === 0) {
     overallProgressEl.classList.add("hide");
-    _overallRateSample = null;
+    resetRate(_BATCH_RATE_KEY);
+
+    for (const key of _rateSamples.keys()) {
+      if (key.startsWith("row-")) _rateSamples.delete(key);
+    }
     return;
   }
   overallProgressEl.classList.remove("hide");
@@ -2882,8 +2947,12 @@ function updateTransfersSummary() {
     parts.push(`${formatBytes(batchBytesDone)} / ${formatBytes(batchBytesTotal)}`);
     parts.push(`${Math.round((batchBytesDone / batchBytesTotal) * 100)}%`);
 
-    const eta = _overallEtaText(batchBytesDone, movingBytesRemaining);
+    const eta = _overallSpeedEtaText(batchBytesDone, movingBytesRemaining, activeTransfers > 0);
     if (eta) parts.push(eta);
+    else if (activeTransfers === 0 && queuedTransfers > 0) {
+
+      parts.push("preparing next file");
+    }
   }
   if (activeTransfers) parts.push(`${activeTransfers} active`);
   if (queuedTransfers) parts.push(`${queuedTransfers} queued`);
@@ -2909,26 +2978,19 @@ function _scheduleSummaryRefresh() {
   }, 250);
 }
 
-let _overallRateSample = null;
+const _BATCH_RATE_KEY = "__batch__";
 
-function _overallEtaText(bytesDone, remaining) {
-  const now = Date.now();
-  if (remaining <= 0) return "";
-  if (!_overallRateSample || bytesDone < _overallRateSample.bytes) {
+function _overallSpeedEtaText(bytesDone, remaining, moving) {
+  if (!moving) {
 
-    _overallRateSample = { bytes: bytesDone, time: now, rate: 0 };
+    rebaselineRate(_BATCH_RATE_KEY, bytesDone);
     return "";
   }
-  const elapsed = (now - _overallRateSample.time) / 1000;
-  if (elapsed < 0.5) {
-
-    return _overallRateSample.rate > 0 ? `${formatDuration(remaining / _overallRateSample.rate)} left` : "";
-  }
-  const instantRate = (bytesDone - _overallRateSample.bytes) / elapsed;
-
-  const rate = _overallRateSample.rate > 0 ? _overallRateSample.rate * 0.7 + instantRate * 0.3 : instantRate;
-  _overallRateSample = { bytes: bytesDone, time: now, rate };
-  return rate > 0 ? `${formatDuration(remaining / rate)} left` : "";
+  if (remaining <= 0) return "";
+  const rate = smoothedRate(_BATCH_RATE_KEY, bytesDone);
+  if (!(rate > 0)) return "";
+  const eta = formatDuration(remaining / rate);
+  return eta ? `${formatBytes(rate)}/s · ${eta} left` : `${formatBytes(rate)}/s`;
 }
 
 function rowActionButtons(label) {
@@ -3341,16 +3403,13 @@ function pollUpload(uploadId, row, { onContinue, onDone, onAddAsVersion, onForce
     ]);
     updateTransfersUI();
 
-    const attemptStartTime = Date.now();
+    resetRate(rowRateKey(row));
     let pollRetries = 0;
-
-    let bytesDoneAtAttemptStart = null;
     const tick = async () => {
       try {
         const info = await apiFetch(`/api/uploads/${uploadId}`);
 
         pollRetries = 0;
-        if (bytesDoneAtAttemptStart === null) bytesDoneAtAttemptStart = info.bytes_done || 0;
 
         if (row.dataset.folderId === undefined && info.folder_id !== undefined) {
           setUploadRowFolder(row, info.folder_id);
@@ -3454,9 +3513,7 @@ function pollUpload(uploadId, row, { onContinue, onDone, onAddAsVersion, onForce
           updateTransfersUI();
           resolve();
         } else {
-          const speedEta = formatSpeedAndEta(info.bytes_done, info.bytes_total, bytesDoneAtAttemptStart, attemptStartTime, row._prevBytesDone, row._prevPollTime);
-          row._prevBytesDone = info.bytes_done;
-          row._prevPollTime = Date.now();
+          const speedEta = formatSpeedAndEta(rowRateKey(row), info.bytes_done, info.bytes_total);
           _setRowBytes(row, info.bytes_done, info.bytes_total);
           row.querySelector(".upload-status").textContent = speedEta
             ? `${formatBytes(info.bytes_done)} / ${formatBytes(info.bytes_total)} · ${speedEta}`
@@ -3529,9 +3586,7 @@ async function streamFileToHandle(id, fileHandle, row, startByte = 0) {
   let bytesDone = startByte;
   row._bytesDone = bytesDone;
 
-  const attemptStartTime = Date.now();
-  let prevBytesDone = bytesDone;
-  let prevTime = Date.now();
+  resetRate(rowRateKey(row));
   try {
     while (true) {
 
@@ -3545,10 +3600,8 @@ async function streamFileToHandle(id, fileHandle, row, startByte = 0) {
       row._bytesDone = bytesDone;
       _setRowBytes(row, bytesDone, total);
       row.querySelector(".upload-bar-fill").style.width = total ? `${Math.round((bytesDone / total) * 100)}%` : "0%";
-      const now = Date.now();
-      const speedEta = formatSpeedAndEta(bytesDone, total, startByte, attemptStartTime, prevBytesDone, prevTime);
-      prevBytesDone = bytesDone;
-      prevTime = now;
+
+      const speedEta = formatSpeedAndEta(rowRateKey(row), bytesDone, total);
       row.querySelector(".upload-status").textContent = total
         ? (speedEta ? `${formatBytes(bytesDone)} / ${formatBytes(total)} · ${speedEta}` : `${formatBytes(bytesDone)} / ${formatBytes(total)}`)
         : (speedEta ? `${formatBytes(bytesDone)} · ${speedEta}` : formatBytes(bytesDone));
@@ -3639,7 +3692,7 @@ async function dedupeName(name, usedLower, dirHandle) {
   let candidate = name;
   let i = 1;
   while (true) {
-    if (!usedLower.has(candidate.toLowerCase())) {
+    if (!usedLower.has(foldName(candidate))) {
       try {
         await dirHandle.getFileHandle(candidate);
       } catch (err) {
@@ -3668,7 +3721,7 @@ async function bulkDownloadWithProgress(ids) {
   for (const id of ids) {
     const file = findFile(id);
     const name = await dedupeName(file ? file.name : id, usedNamesLower, dirHandle);
-    usedNamesLower.add(name.toLowerCase());
+    usedNamesLower.add(foldName(name));
     try {
       const fileHandle = await dirHandle.getFileHandle(name, { create: true });
       handles.push({ id, fileHandle, name });
@@ -3729,7 +3782,7 @@ async function bulkDownloadWithProgress(ids) {
 function dedupeFolderName(name, usedLower) {
   let candidate = name;
   let i = 1;
-  while (usedLower.has(candidate.toLowerCase())) {
+  while (usedLower.has(foldName(candidate))) {
     candidate = `${name} (${i})`;
     i++;
   }
@@ -3742,7 +3795,7 @@ async function downloadFilesInto(fileIds, dirHandle, usedLower) {
   for (const id of fileIds) {
     const file = findFile(id);
     const name = await dedupeName(file ? file.name : id, usedLower, dirHandle);
-    usedLower.add(name.toLowerCase());
+    usedLower.add(foldName(name));
     try {
       const fileHandle = await dirHandle.getFileHandle(name, { create: true });
       handles.push({ id, fileHandle, name });
@@ -3802,7 +3855,7 @@ async function downloadFolderInto(folderId, dirHandle) {
   const usedNamesLower = new Set();
   for (const subfolder of foldersByParent(folderId)) {
     const name = dedupeFolderName(subfolder.name, usedNamesLower);
-    usedNamesLower.add(name.toLowerCase());
+    usedNamesLower.add(foldName(name));
     const subDirHandle = await dirHandle.getDirectoryHandle(name, { create: true });
     await downloadFolderInto(subfolder.id, subDirHandle);
   }
@@ -3848,7 +3901,7 @@ async function downloadMixedWithProgress(folderIds, fileIds) {
     const folder = findFolder(folderId);
     if (!folder) continue;
     const name = dedupeFolderName(folder.name, usedNamesLower);
-    usedNamesLower.add(name.toLowerCase());
+    usedNamesLower.add(foldName(name));
     try {
       const subDirHandle = await dirHandle.getDirectoryHandle(name, { create: true });
       await downloadFolderInto(folderId, subDirHandle);
@@ -3871,7 +3924,7 @@ function trashFoldersByParent(parentId) {
     parentId === null
       ? trashFoldersCache.filter((f) => f.parent_id === null || !trashFolderIdSet().has(f.parent_id))
       : trashFoldersCache.filter((f) => f.parent_id === parentId);
-  return list.slice().sort((a, b) => a.name.localeCompare(b.name));
+  return list.slice().sort((a, b) => compareNames(a.name, b.name));
 }
 
 function trashFilesByFolder(folderId) {
@@ -3879,7 +3932,7 @@ function trashFilesByFolder(folderId) {
     folderId === null
       ? trashFilesCache.filter((f) => f.folder_id === null || !trashFolderIdSet().has(f.folder_id))
       : trashFilesCache.filter((f) => f.folder_id === folderId);
-  return list.slice().sort((a, b) => a.name.localeCompare(b.name));
+  return list.slice().sort((a, b) => compareNames(a.name, b.name));
 }
 
 function findTrashFolder(id) {
@@ -3942,9 +3995,9 @@ function renderTrash(trashFolders, trashFiles) {
 
   let displayFolders, displayFiles;
   if (trashSearchQuery) {
-    const query = trashSearchQuery.toLowerCase();
-    displayFolders = trashFolders.filter((f) => f.name.toLowerCase().includes(query));
-    displayFiles = trashFiles.filter((f) => f.name.toLowerCase().includes(query));
+    const query = foldName(trashSearchQuery);
+    displayFolders = trashFolders.filter((f) => foldName(f.name).includes(query));
+    displayFiles = trashFiles.filter((f) => foldName(f.name).includes(query));
   } else {
     displayFolders = trashFoldersByParent(currentTrashFolderId);
     displayFiles = trashFilesByFolder(currentTrashFolderId);
@@ -5206,8 +5259,8 @@ function currentNavigableImageIds() {
 
     let matches = files.filter(config.filter).sort(_sortComparator());
     if (smartSearchQuery) {
-      const query = smartSearchQuery.toLowerCase();
-      matches = matches.filter((f) => f.name.toLowerCase().includes(query));
+      const query = foldName(smartSearchQuery);
+      matches = matches.filter((f) => foldName(f.name).includes(query));
     }
     return matches.filter((f) => f.mime_type && f.mime_type.startsWith("image/")).map((f) => f.id);
   }
@@ -5374,8 +5427,8 @@ function currentNavigableVideoIds() {
 
     let matches = files.filter(config.filter).sort(_sortComparator());
     if (smartSearchQuery) {
-      const query = smartSearchQuery.toLowerCase();
-      matches = matches.filter((f) => f.name.toLowerCase().includes(query));
+      const query = foldName(smartSearchQuery);
+      matches = matches.filter((f) => foldName(f.name).includes(query));
     }
     return matches.filter((f) => f.mime_type && f.mime_type.startsWith("video/")).map((f) => f.id);
   }
@@ -5514,8 +5567,8 @@ function currentNavigableAudioIds() {
 
     let matches = files.filter(config.filter).sort(_sortComparator());
     if (smartSearchQuery) {
-      const query = smartSearchQuery.toLowerCase();
-      matches = matches.filter((f) => f.name.toLowerCase().includes(query));
+      const query = foldName(smartSearchQuery);
+      matches = matches.filter((f) => foldName(f.name).includes(query));
     }
     return matches.filter((f) => f.mime_type && f.mime_type.startsWith("audio/")).map((f) => f.id);
   }
@@ -6727,32 +6780,21 @@ function syncPairCardHtml(pair, files) {
         <span>${synced.length} file${synced.length === 1 ? "" : "s"} synced</span>
         <span>Last sync: ${escapeHtml(lastSyncStr)}</span>
         ${pair.pending_count ? `<span style="color:var(--accent-deep)">${pair.pending_count} file${pair.pending_count === 1 ? "" : "s"} left to sync</span>` : ""}
-
         ${changed.length ? `<span style="color:var(--accent-deep)">${changed.length} changed locally</span>` : ""}
       </div>
-
       <div class="sync-pair-options">
         <label class="toggle-switch"><input type="checkbox" class="sync-pair-toggle"${paused ? " checked" : ""}> <span class="toggle-label">Pause</span><span class="toggle-track"></span></label>
-
         <label class="toggle-switch"><input type="checkbox" class="sync-pair-exclude-dot-files"${pair.exclude_dot_files !== false ? " checked" : ""}> <span class="toggle-label">Exclude dot files (recommended)</span><span class="toggle-track"></span></label>
-
         ${mode !== "flag" ? `<p class="step-hint" style="margin:0;font-size:0.78rem">On local change: ${modeLabel}</p>` : ""}
         <select class="sync-pair-reupload-mode">
           <option value="flag"${mode === "flag" ? " selected" : ""}>Flag only (no re-upload)</option>
-
           <option value="version"${mode === "version" ? " selected" : ""}>Upload new version</option>
-
           <option value="soft_delete"${mode === "soft_delete" ? " selected" : ""}>New file + soft delete old</option>
-
           <option value="new_file"${mode === "new_file" ? " selected" : ""}>Upload as new file only</option>
-
         </select>
-
       </div>
-
       ${changedHtml}
     </div>
-
   `;
 }
 
@@ -6774,7 +6816,6 @@ async function loadSyncView() {
     badgeEl.classList.toggle("hide", changedCount === 0);
   } catch (err) {
     listEl.innerHTML = `<p class="step-error">${escapeHtml(err.message)}</p>`;
-
     badgeEl.classList.add("hide");
   }
 }
@@ -6832,11 +6873,11 @@ function renderSyncTransfers(uploads) {
   if (!uploads || uploads.length === 0) {
     return `<p class="step-hint">No active sync uploads. New files in watched folders will appear here when they start uploading.</p>`;
   }
-  const query = syncTransfersSearchQuery.trim().toLowerCase();
+  const query = foldName(syncTransfersSearchQuery.trim());
   const filtered = query
     ? uploads.filter((u) =>
-        (u.filename || "").toLowerCase().includes(query) ||
-        (u.relative_path || "").toLowerCase().includes(query))
+        foldName((u.filename || "")).includes(query) ||
+        foldName((u.relative_path || "")).includes(query))
     : uploads;
   if (filtered.length === 0) {
     return `<p class="step-hint">No sync uploads match "${escapeHtml(syncTransfersSearchQuery)}".</p>`;
@@ -6855,32 +6896,18 @@ function _countFolderFiles(folder) {
   return count;
 }
 
-const _syncRateSamples = new Map();
-
 function _syncTransferEta(u, key) {
   if (u.status !== "uploading" || !u.bytes_total) {
-    _syncRateSamples.delete(key);
+    resetRate(`sync-${key}`);
     return "";
   }
   const done = u.bytes_done || 0;
   const remaining = u.bytes_total - done;
   if (remaining <= 0) return "";
-  const now = Date.now();
-  const prev = _syncRateSamples.get(key);
-
-  if (!prev || done < prev.bytes) {
-    _syncRateSamples.set(key, { bytes: done, time: now, rate: 0 });
-    return "";
-  }
-  const elapsed = (now - prev.time) / 1000;
-  if (elapsed < 0.5) {
-
-    return prev.rate > 0 ? `${formatDuration(remaining / prev.rate)} left` : "";
-  }
-  const instantRate = (done - prev.bytes) / elapsed;
-  const rate = prev.rate > 0 ? prev.rate * 0.7 + instantRate * 0.3 : instantRate;
-  _syncRateSamples.set(key, { bytes: done, time: now, rate });
-  return rate > 0 ? `${formatDuration(remaining / rate)} left` : "";
+  const rate = smoothedRate(`sync-${key}`, done);
+  if (!(rate > 0)) return "";
+  const eta = formatDuration(remaining / rate);
+  return eta ? `${formatBytes(rate)}/s · ${eta} left` : "";
 }
 
 function syncTransferRowHtml(u) {

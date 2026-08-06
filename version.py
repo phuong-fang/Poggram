@@ -6,7 +6,7 @@ import subprocess
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 _cached = None
