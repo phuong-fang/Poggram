@@ -147,7 +147,7 @@ def register(app):
             for chat_id, message_ids in messages_by_chat.items():
                 telegram_client.delete_documents(chat_id, message_ids)
         except Exception as e:
-            return jsonify({"error": f"Telegram delete failed: {e}"}), 502
+            return jsonify({"error": f"Telegram delete failed: {shared.client_error(e)}"}), 502
         store.apply_versioned_wipe()
         shared.mark_app_data_changed()
         return jsonify({"files_affected": files_affected, "bytes_freed": bytes_freed})
@@ -159,7 +159,7 @@ def register(app):
             for chat_id, message_ids in messages_by_chat.items():
                 telegram_client.delete_documents(chat_id, message_ids)
         except Exception as e:
-            return jsonify({"error": f"Telegram delete failed: {e}"}), 502
+            return jsonify({"error": f"Telegram delete failed: {shared.client_error(e)}"}), 502
         store.apply_everything_wipe()
         shared.mark_app_data_changed()
         return jsonify({"files_deleted": file_count, "bytes_freed": bytes_freed})

@@ -45,7 +45,7 @@ def register(app):
             return jsonify({"ok": True, "forum_enabled": enabled})
         except Exception as e:
             logger.exception(f"Failed to set forum mode to {enabled}")
-            return jsonify({"ok": False, "error": str(e) or type(e).__name__}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/app-data-backup/settings", methods=["POST"])
     def app_data_backup_settings_route():
@@ -78,7 +78,7 @@ def register(app):
         except Exception as e:
             _backup_lock.release()
             logger.exception("Failed to start app-data backup")
-            return jsonify({"ok": False, "error": str(e) or type(e).__name__}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
         return jsonify({"ok": True, "started": True})
 
     @app.route("/api/app-data-backup/backup-status", methods=["GET"])
@@ -93,7 +93,7 @@ def register(app):
             return jsonify(telegram_client.list_app_data_snapshots())
         except Exception as e:
             logger.exception("Failed to list app-data snapshots")
-            return jsonify({"error": str(e) or type(e).__name__}), 400
+            return jsonify({"error": shared.client_error(e)}), 400
 
     @app.route("/api/app-data-backup/snapshots/<int:message_id>/restore", methods=["POST"])
     def app_data_backup_restore_route(message_id):
@@ -106,7 +106,7 @@ def register(app):
         except Exception as e:
             _restore_lock.release()
             logger.exception("Failed to start app-data restore")
-            return jsonify({"ok": False, "error": str(e) or type(e).__name__}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
         return jsonify({"ok": True, "started": True})
 
     @app.route("/api/app-data-backup/restore-status", methods=["GET"])
@@ -122,7 +122,7 @@ def register(app):
             snapshots = telegram_client.list_app_data_snapshots()
         except Exception as e:
             logger.exception("Boot-time app-data backup check failed")
-            return jsonify({"error": str(e) or type(e).__name__}), 400
+            return jsonify({"error": shared.client_error(e)}), 400
         if not snapshots:
             return jsonify({"newer_available": False})
         latest = snapshots[0]

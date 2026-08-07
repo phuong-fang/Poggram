@@ -111,7 +111,7 @@ def register(app):
                     record["telegram_chat_id"], [c["message_id"] for c in record["chunks"]]
                 )
             except Exception as e:
-                return jsonify({"error": f"Telegram delete failed: {e}"}), 502
+                return jsonify({"error": f"Telegram delete failed: {shared.client_error(e)}"}), 502
 
         if record["owns_local_path"]:
             try:

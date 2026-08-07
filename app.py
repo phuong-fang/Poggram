@@ -6,8 +6,9 @@ import sys
 import threading
 import time
 import uuid
+from urllib.parse import urlparse
 
-from flask import Flask, render_template, request
+from flask import Flask, jsonify, render_template, request
 from flask.wrappers import Request as FlaskRequest
 
 import shared
@@ -72,6 +73,25 @@ app = Flask(
     template_folder=os.path.join(_BUNDLE_DIR, "templates"),
 )
 app.request_class = VaultRequest
+
+_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+@app.before_request
+def _reject_cross_origin_writes():
+
+    if request.method not in _STATE_CHANGING_METHODS:
+        return None
+    site = request.headers.get("Sec-Fetch-Site")
+
+    if site is not None and site not in ("same-origin", "none"):
+        logger.warning(f"Blocked cross-origin {request.method} {request.path} (Sec-Fetch-Site: {site})")
+        return jsonify({"error": "Cross-origin requests are not allowed."}), 403
+    origin = request.headers.get("Origin")
+
+    if origin is not None and urlparse(origin).netloc != request.host:
+        logger.warning(f"Blocked cross-origin {request.method} {request.path} (Origin: {origin})")
+        return jsonify({"error": "Cross-origin requests are not allowed."}), 403
+    return None
 
 @app.teardown_request
 def _cleanup_unclaimed_uploads(exc):

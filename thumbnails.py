@@ -80,7 +80,8 @@ def probe_media_info(source):
         return None
     try:
         result = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", source],
+
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "-i", source],
             capture_output=True, timeout=_FFMPEG_TIMEOUT_SECONDS,
             creationflags=_NO_WINDOW,
         )

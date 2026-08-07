@@ -136,7 +136,7 @@ def register(app):
 
             subprocess.Popen(["xdg-open", path])
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": shared.client_error(e)}), 500
         return jsonify({"ok": True, "path": path})
 
     @app.route("/api/settings/download", methods=["PUT"])
@@ -208,7 +208,7 @@ def register(app):
             safe = {k: v for k, v in s.items() if k in _SETTINGS_EXPORT_ALLOWLIST}
             return jsonify({"ok": True, "settings": safe})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/settings/import", methods=["POST"])
     def import_settings():
@@ -222,4 +222,4 @@ def register(app):
             store.save_settings_fields(safe)
             return jsonify({"ok": True})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400

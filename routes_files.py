@@ -155,7 +155,7 @@ def register(app):
                 message_ids.append(file["meta_message_id"])
             telegram_client.delete_documents(file["telegram_chat_id"], message_ids)
         except Exception as e:
-            return jsonify({"error": f"Telegram delete failed: {e}"}), 502
+            return jsonify({"error": f"Telegram delete failed: {shared.client_error(e)}"}), 502
         store.permanent_delete_file(file_id)
         shared.mark_app_data_changed()
         return jsonify({"ok": True})
