@@ -86,7 +86,9 @@ def test_upload_runs_through_to_a_vault_record(source_file, monkeypatch, isolate
     record = entry["file"]
     assert record["name"] == "clip.bin"
     assert isolated_store.find_file(record["id"]) is not None, "no vault record was written"
-    assert done and done[0]["id"] == record["id"], "on_done did not fire with the record"
+
+    assert _wait_for(lambda: done), "on_done never fired"
+    assert done[0]["id"] == record["id"], "on_done did not fire with the record"
 
 def test_a_completed_upload_leaves_no_pending_row_behind(source_file, monkeypatch, isolated_store):
 

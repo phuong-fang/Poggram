@@ -338,5 +338,5 @@ def register(app):
             subprocess.Popen([player_path, stream_url],
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except OSError as e:
-            return jsonify({"error": f"Couldn't launch player: {e}"}), 500
+            return jsonify({"error": f"Couldn't launch player: {shared.client_error(e)}"}), 500
         return jsonify({"ok": True})

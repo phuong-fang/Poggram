@@ -80,7 +80,7 @@ def register(app):
             try:
                 telegram_client.delete_documents(chat_id, message_ids)
             except Exception as e:
-                return jsonify({"error": f"Telegram delete failed: {e}"}), 502
+                return jsonify({"error": f"Telegram delete failed: {shared.client_error(e)}"}), 502
         ok, error = store.permanent_delete_folder(folder_id)
         if not ok:
             status = 404 if error == "Folder not found." else 400

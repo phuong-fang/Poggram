@@ -16,6 +16,19 @@ import thumbnails
 
 logger = logging.getLogger(__name__)
 
+_USER_FACING_ERRORS = (ValueError, ConnectionError)
+
+_GENERIC_ERROR = "Something went wrong. See data/poggram.log for the details."
+
+def client_error(exc, fallback=_GENERIC_ERROR):
+
+    from telethon.errors import RPCError
+
+    if isinstance(exc, _USER_FACING_ERRORS) or isinstance(exc, RPCError):
+        return str(exc) or type(exc).__name__
+    logger.exception(f"Returning a generic error to the client for: {type(exc).__name__}")
+    return fallback
+
 _thumbnail_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="thumb-gen-")
 
 uploads = {}

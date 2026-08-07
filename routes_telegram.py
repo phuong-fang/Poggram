@@ -43,7 +43,7 @@ def register(app):
             return jsonify({"ok": True})
         except Exception as e:
             logger.exception("Logout failed")
-            return jsonify({"ok": False, "error": str(e) or type(e).__name__}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/telegram/refresh-premium-status", methods=["POST"])
     def telegram_refresh_premium_status_route():
@@ -58,7 +58,7 @@ def register(app):
             })
         except Exception as e:
             logger.exception("Failed to refresh Premium status")
-            return jsonify({"ok": False, "error": str(e) or type(e).__name__}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/telegram/archive-check", methods=["GET"])
     def telegram_archive_check_route():
@@ -67,7 +67,7 @@ def register(app):
             return jsonify(telegram_client.check_archive_identity())
         except Exception as e:
             logger.exception("Archive identity check failed")
-            return jsonify({"error": str(e) or type(e).__name__}), 400
+            return jsonify({"error": shared.client_error(e)}), 400
 
     @app.route("/api/telegram/connect", methods=["POST"])
     def telegram_connect():
@@ -81,7 +81,7 @@ def register(app):
             telegram_client.connect(api_id, api_hash, phone_number)
             return jsonify({"ok": True, "step": "code"})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/telegram/code", methods=["POST"])
     def telegram_code():
@@ -93,7 +93,7 @@ def register(app):
             step = telegram_client.submit_code(code)
             return jsonify({"ok": True, "step": step})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/telegram/password", methods=["POST"])
     def telegram_password():
@@ -105,7 +105,7 @@ def register(app):
             telegram_client.submit_password(password)
             return jsonify({"ok": True, "step": "create_archive"})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/telegram/create-archive", methods=["POST"])
     def telegram_create_archive():
@@ -115,7 +115,7 @@ def register(app):
             chat_id, chat_title = telegram_client.create_archive_supergroup(title)
             return jsonify({"ok": True, "chat_id": chat_id, "chat_title": chat_title})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/telegram/scan-archives", methods=["POST"])
     def telegram_scan_archives():
@@ -125,7 +125,7 @@ def register(app):
                 return jsonify({"ok": False, "error": result["error"]}), 400
             return jsonify({"ok": True, "candidates": result})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/telegram/set-archive", methods=["POST"])
     def telegram_set_archive():
@@ -138,7 +138,7 @@ def register(app):
             store.save_settings_fields({"archive_chat_id": chat_id, "archive_chat_title": title})
             return jsonify({"ok": True, "chat_id": chat_id, "chat_title": title})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/telegram/backfill", methods=["POST"])
     def telegram_backfill():
@@ -148,7 +148,7 @@ def register(app):
             imported, skipped = telegram_client.backfill_scan(force_full=force_full)
             return jsonify({"ok": True, "imported": imported, "skipped": skipped, "full": force_full})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
     @app.route("/api/media-topic/migrate", methods=["POST"])
     def media_topic_migrate_route():
@@ -157,7 +157,7 @@ def register(app):
             already_migrated = telegram_client.media_topic_message_ids()
         except Exception as e:
             logger.exception("Failed to resolve already-migrated media-topic message ids")
-            return jsonify({"ok": False, "error": str(e) or type(e).__name__}), 400
+            return jsonify({"ok": False, "error": shared.client_error(e)}), 400
 
         files = store.load_files()
         migrated = []
@@ -179,6 +179,6 @@ def register(app):
                         migrated.append({"file_name": f["name"], "old_message_id": old_id, "new_message_id": new_id})
                     except Exception as e:
                         errors.append({
-                            "file_name": f["name"], "old_message_id": old_id, "error": str(e) or type(e).__name__,
+                            "file_name": f["name"], "old_message_id": old_id, "error": shared.client_error(e),
                         })
         return jsonify({"ok": True, "migrated": migrated, "errors": errors})
