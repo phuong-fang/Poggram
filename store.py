@@ -1,6 +1,7 @@
 import copy
 import io
 import json
+import logging
 import lzma
 import os
 import sqlite3
@@ -17,6 +18,8 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 import sync_engine
+
+logger = logging.getLogger(__name__)
 
 def _app_dir():
 
@@ -1141,6 +1144,11 @@ def everything_summary():
     return {"total_files": total_files, "total_folders": total_folders, "total_size": total_size}
 
 def apply_everything_wipe():
+
+    files = load_files()
+    folders = load_folders()
+    logger.info("Wiping the local index: discarding %d file record(s) and %d folder(s)",
+                len(files), len(folders))
     save_folders([])
     save_files([])
 

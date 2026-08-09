@@ -638,7 +638,7 @@ def upload_file(
             if cancel_token is not None and cancel_token.is_cancelled():
                 raise UploadCancelled()
             data = f.read(max_chunk_size)
-            part_name = f"{base_name}.{file_tag}.part{i + 1:02d}of{n_chunks:02d}{ext}"
+            part_name = _chunk_part_name(base_name, file_tag, i, n_chunks, ext)
 
             def _tg_progress(sent, total, i=i, bytes_done_before=bytes_done_before):
                 if cancel_token is not None and cancel_token.is_cancelled():
@@ -683,6 +683,13 @@ def _background_backoff_workers():
     except (TypeError, ValueError):
         return BACKGROUND_BACKOFF_WORKERS
 
+VALID_PART_SIZES_KB = (32, 64, 128, 256, 512)
+
+def _snap_part_size_kb(requested_kb):
+
+    usable = [kb for kb in VALID_PART_SIZES_KB if kb <= requested_kb]
+    return usable[-1] if usable else VALID_PART_SIZES_KB[0]
+
 def _select_part_size(total_size, requested_kb, is_premium):
 
     max_parts = 8000 if is_premium else 4000
@@ -693,9 +700,12 @@ def _select_part_size(total_size, requested_kb, is_premium):
             requested_kb = 256
         else:
             requested_kb = 512
-    requested_kb = min(requested_kb, 512)
+
+    requested_kb = _snap_part_size_kb(requested_kb)
     while requested_kb < 512 and math.ceil(total_size / (requested_kb * 1024)) > max_parts:
         requested_kb *= 2
+
+    requested_kb = min(requested_kb, 512)
     part_size_bytes = requested_kb * 1024
     if math.ceil(total_size / part_size_bytes) > max_parts:
         return None
@@ -751,7 +761,7 @@ def upload_file_parallel(
             if cancel_token is not None and cancel_token.is_cancelled():
                 raise UploadCancelled()
             data = f.read(max_chunk_size)
-            part_name = f"{base_name}.{file_tag}.part{i + 1:02d}of{n_chunks:02d}{ext}"
+            part_name = _chunk_part_name(base_name, file_tag, i, n_chunks, ext)
 
             def _tg_progress(sent, total, i=i, bytes_done_before=bytes_done_before):
                 if cancel_token is not None and cancel_token.is_cancelled():
@@ -952,16 +962,20 @@ def download_thumbnail(chat_id, message_id):
     return _run_coro_retry_on_lock(_do, timeout=60)
 
 def delete_documents(chat_id, message_ids):
+
     client = _require_client()
+    ids = list(message_ids)
+    logger.info("Deleting %d message(s) from chat %s - irreversible", len(ids), chat_id)
 
     async def _do():
-        await client.delete_messages(_chat_id_to_peer(chat_id), message_ids)
+        await client.delete_messages(_chat_id_to_peer(chat_id), ids)
 
     run_coro(_do(), timeout=60)
 
 def download_range_stream(chat_id, message_id, offset, length):
 
     client = _require_client()
+
     aligned_offset = (offset // 4096) * 4096
     skip = offset - aligned_offset
 
@@ -1140,9 +1154,22 @@ def delete_meta_message(chat_id, meta_message_id):
     except Exception:
         return False
 
-_TAGGED_CHUNK_NAME_RE = re.compile(r"^(.*)\.([0-9a-f]{16})\.part(\d+)of(\d+)(\.[^./\\]*)?$")
+_TAGGED_CHUNK_NAME_RE = re.compile(r"^(.*)[._]([0-9a-f]{16})[._]part(\d+)of(\d+)(\.[^./\\]*)?$")
 
-_LEGACY_CHUNK_NAME_RE = re.compile(r"^(.*)\.part(\d+)of(\d+)(\.[^./\\]*)?$")
+_TAGGED_CHUNK_NO_PART_RE = re.compile(r"^(.*)[._]([0-9a-f]{16})(\.[^./\\]*)?$")
+
+_MAX_CHUNK_STEM_LENGTH = 60
+
+def _chunk_part_name(base_name, file_tag, part_index, n_chunks, ext):
+
+    marker = f".{file_tag}.part{part_index + 1:02d}of{n_chunks:02d}"
+    budget = _MAX_CHUNK_STEM_LENGTH - len(marker)
+    if budget < 1:
+
+        return marker.lstrip(".") + ext
+    return base_name[:budget] + marker + ext
+
+_LEGACY_CHUNK_NAME_RE = re.compile(r"^(.*)[._]part(\d+)of(\d+)(\.[^./\\]*)?$")
 
 def _import_single(chat_id, message, name_override=None):
     name = name_override or message.file.name or f"telegram_{message.id}{message.file.ext or ''}"
@@ -1227,6 +1254,8 @@ def backfill_scan(force_full=False):
 
         groups = {}
         singles = []
+
+        truncated = {}
         for message in candidates:
             name = message.file.name or f"telegram_{message.id}{message.file.ext or ''}"
             tagged = _TAGGED_CHUNK_NAME_RE.match(name)
@@ -1245,7 +1274,18 @@ def backfill_scan(force_full=False):
 
                 groups.setdefault((base, None, total_parts, ext), []).append((part_num, message))
                 continue
+
+            no_part = _TAGGED_CHUNK_NO_PART_RE.match(name)
+            if no_part:
+                key = (no_part.group(1), no_part.group(2), no_part.group(3) or "")
+                truncated.setdefault(key, []).append(message)
+                continue
             singles.append(message)
+
+        for key, messages in list(truncated.items()):
+            if len(messages) < 2:
+                singles.extend(messages)
+                del truncated[key]
 
         imported = 0
         for (base, _tag, total_parts, ext), parts in groups.items():
@@ -1275,6 +1315,29 @@ def backfill_scan(force_full=False):
                     _import_single(chat_id, msg)
                     imported += 1
 
+        for (base, tag, ext), messages in truncated.items():
+            ordered = sorted(messages, key=lambda m: m.id)
+            full_name = base + ext
+            meta_name = meta_by_reply_to.get(ordered[0].id)
+            if meta_name:
+                full_name = meta_name
+            mime_type, _ = mimetypes.guess_type(full_name)
+            chunks = [{"message_id": msg.id, "size_bytes": msg.file.size} for msg in ordered]
+            logger.info(
+                "Backfill: reassembling %d parts of %r from tag %s (part markers were "
+                "truncated by Telegram)", len(chunks), full_name, tag,
+            )
+            store.create_file({
+                "name": full_name,
+                "folder_id": None,
+                "size_bytes": sum(c["size_bytes"] for c in chunks),
+                "mime_type": mime_type,
+                "telegram_chat_id": chat_id,
+                "chunks": chunks,
+                "source": "backfill",
+            })
+            imported += 1
+
         for message in singles:
             meta_name = meta_by_reply_to.get(message.id)
             _import_single(chat_id, message, name_override=meta_name)
@@ -1285,6 +1348,12 @@ def backfill_scan(force_full=False):
             "backfill_scanned_up_to_message_id": highest_scanned,
         })
 
+        logger.info(
+            "Backfill scan: imported %d, skipped %d already-indexed, scanned up to message %d "
+            "(force_full=%s, %d chunk sets reassembled, %d singles)",
+            imported, skipped, highest_scanned, force_full, len(groups) + len(truncated),
+            len(singles),
+        )
         return imported, skipped
 
     return run_coro(_do(), timeout=BACKFILL_TIMEOUT)

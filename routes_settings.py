@@ -92,7 +92,8 @@ def register(app):
         except (TypeError, ValueError):
             return jsonify({"error": "upload_part_size_kb must be a whole number of KB (0 = auto)."}), 400
         workers = max(1, min(16, workers))
-        part_kb = 0 if part_kb == 0 else max(32, min(512, part_kb))
+
+        part_kb = 0 if part_kb == 0 else telegram_client._snap_part_size_kb(max(32, part_kb))
         store.save_settings_fields({
             "upload_parallel_workers": workers,
             "upload_part_size_kb": part_kb,

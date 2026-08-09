@@ -301,3 +301,31 @@ def test_file_stats_on_an_empty_vault(isolated_store):
         "file_count": 0, "versioned_file_count": 0,
         "total_current_bytes": 0, "total_versioned_bytes": 0,
     }
+
+def test_store_has_a_logger():
+
+    import store as store_mod
+
+    assert hasattr(store_mod, "logger")
+    assert store_mod.logger.name == "store"
+
+def test_wiping_the_index_logs_what_it_discarded(isolated_store, caplog):
+
+    import logging
+
+    folder, _ = isolated_store.create_folder("Doomed", None)
+    isolated_store.save_files([{
+        "id": "f1", "name": "a.bin", "folder_id": folder["id"], "size_bytes": 1,
+        "mime_type": "application/octet-stream", "telegram_chat_id": 1,
+        "chunks": [], "cached_chunks": [], "versions": [], "current_version": 0,
+        "date_uploaded": "2026-08-07T00:00:00", "date_modified": "2026-08-07T00:00:00",
+        "deleted": False,
+    }])
+
+    with caplog.at_level(logging.INFO, logger="store"):
+        isolated_store.apply_everything_wipe()
+
+    assert isolated_store.load_files() == []
+    assert isolated_store.load_folders() == []
+    logged = " ".join(r.getMessage() for r in caplog.records)
+    assert "1 file record" in logged and "1 folder" in logged, logged

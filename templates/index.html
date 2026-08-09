@@ -365,8 +365,15 @@
             <div class="status-row">
               <span class="status-label">Upload part size</span>
               <span class="chunk-size-control">
-                <input type="number" id="f-upload-part-size" min="0" max="512" step="32" value="0">
-                <span class="unit-label">KB (0 = auto)</span>
+
+                <select id="f-upload-part-size">
+                  <option value="0">Auto</option>
+                  <option value="32">32 KB</option>
+                  <option value="64">64 KB</option>
+                  <option value="128">128 KB</option>
+                  <option value="256">256 KB</option>
+                  <option value="512">512 KB</option>
+                </select>
                 <button type="button" id="save-upload-part-size-btn">Save</button>
               </span>
             </div>

@@ -217,6 +217,22 @@ def run_app_data_backup(on_finished=None):
 
     threading.Thread(target=_run, daemon=True).start()
 
+def _index_shape():
+
+    try:
+        files = store.load_files()
+        folders = store.load_folders()
+        by_source = {}
+        for f in files:
+            key = f.get("source") or "unknown"
+            by_source[key] = by_source.get(key, 0) + 1
+        return (f"{len(files)} files ({', '.join(f'{k}={v}' for k, v in sorted(by_source.items()))}), "
+                f"{len(folders)} folders")
+    except Exception:
+
+        logger.debug("Couldn't summarise the index", exc_info=True)
+        return "unavailable"
+
 def run_app_data_restore(message_id, on_finished=None):
 
     with restore_status_lock:
@@ -241,11 +257,17 @@ def run_app_data_restore(message_id, on_finished=None):
         try:
             sync_engine.shutdown()
             try:
+
+                before = _index_shape()
+                logger.info("App-data restore: starting from message %s, index currently %s",
+                            message_id, before)
                 snapshot_bytes = telegram_client.download_app_data_snapshot(message_id, on_progress=_on_download_progress)
                 with restore_status_lock:
                     restore_status["status"] = "restoring"
                 store.restore_app_data_snapshot(snapshot_bytes, on_progress=_on_restore_progress)
                 store.save_settings_fields({"app_data_backup_last_known_message_id": message_id})
+                logger.info("App-data restore: done, index now %s (was %s)",
+                            _index_shape(), before)
                 with restore_status_lock:
                     restore_status["status"] = "done"
             finally:
